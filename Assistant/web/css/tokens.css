@@ -7,6 +7,7 @@
   --color-bg: #1a1a1a;
   --color-surface: #242424;
   --color-surface-hover: #2a2a2a;
+  --color-surface-soft: #2e2e2e;
   --color-surface-muted: rgba(255, 255, 255, 0.06);
   --color-border: #333333;
   --color-border-strong: #3a3a3a;
@@ -15,8 +16,10 @@
   --color-text: #e8eaed;
   --color-text-secondary: rgba(255, 255, 255, 0.87);
   --color-text-muted: rgba(232, 234, 237, 0.56);
+  --color-text-dim: rgba(232, 234, 237, 0.38);
   --color-primary: #5ba4d4;
   --color-primary-strong: #3a8ab8;
+  --color-primary-hover: #4895c6;
   --color-primary-soft: rgba(91, 164, 212, 0.12);
   --color-primary-softer: rgba(91, 164, 212, 0.08);
   --color-danger: #ff4d4f;
@@ -58,6 +61,7 @@
   --layout-sidebar-width: 235px;
   --layout-sidebar-compact: 72px;
   --layout-sidebar-mobile: 64px;
+  --layout-session-width: 240px;
   --layout-content-max: 1560px;
   --layout-chat-width: 860px;
 }

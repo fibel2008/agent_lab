@@ -44,6 +44,17 @@
       <path d="M22 2 11 13"></path>
       <path d="M22 2 15 22 11 13 2 9 22 2z"></path>
     </symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19"></line>
+      <line x1="5" y1="12" x2="19" y2="12"></line>
+    </symbol>
+    <symbol id="icon-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+    </symbol>
+    <symbol id="icon-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="3 6 5 6 21 6"></polyline>
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+    </symbol>
   </svg>
 
   <a class="skip-link" href="#main-content">跳到主内容</a>
@@ -75,7 +86,17 @@
 
     <main class="app-main" id="main-content">
       <section class="view view--chat" id="view-chat" aria-label="对话主窗口">
-        <div class="chat">
+        <aside class="chat-sessions" id="chat-sessions" aria-label="会话列表">
+          <div class="chat-sessions__header">
+            <div class="chat-sessions__reserved" id="chat-sessions-reserved" aria-hidden="true"></div>
+            <button class="chat-sessions__new-btn" id="new-chat-button" type="button">
+              <svg class="chat-sessions__new-icon" viewBox="0 0 24 24"><use href="#icon-plus"></use></svg>
+              <span>新建对话</span>
+            </button>
+          </div>
+          <ul class="chat-sessions__list" id="chat-sessions-list" role="list"></ul>
+        </aside>
+        <div class="chat" id="chat-main">
           <div class="chat__scroll" id="chat-scroll">
             <div class="chat__empty" id="chat-empty">
               <span class="chat__empty-icon" aria-hidden="true">

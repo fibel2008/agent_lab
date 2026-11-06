@@ -1,4 +1,4 @@
-// Hash 路由解析、导航高亮与视图切换
+// Hash 路由解析、导航高亮、主侧栏折叠切换与视图显隐
 
 import { DEFAULT_HASH, findRouteByHash } from './routes.js';
 
@@ -7,6 +7,7 @@ export function initRouter({
   pageTitleEl,
   viewChatEl,
   viewPlaceholderEl,
+  appSidebarEl,
   onRouteRender,
 }) {
   function syncRoute() {
@@ -38,6 +39,10 @@ export function initRouter({
     }
 
     const isChat = route.view === 'chat';
+    if (appSidebarEl) {
+      appSidebarEl.classList.toggle('app-sidebar--collapsed', isChat);
+    }
+
     if (viewChatEl) {
       viewChatEl.hidden = !isChat;
     }
