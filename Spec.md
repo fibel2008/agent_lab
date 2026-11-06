@@ -31,23 +31,23 @@ Lab1/
 │   │   ├── mock_agent.py        mock 回复的唯一生成位置
 │   │   └── factory.py           唯一替换点：选哪个 Agent
 │   └── web/
-│       ├── index.html           应用外壳 + 内联 SVG 图标库
+│       ├── index.html           应用外壳 + 内联 SVG 图标库（含品牌、导航、发送、新建、编辑、删除）
 │       ├── css/
 │       │   ├── tokens.css       设计令牌（颜色、圆角、间距、字号、布局）
 │       │   ├── base.css         reset、排版、滚动条、可访问性基础
-│       │   ├── layout.css       顶栏、侧栏、内容区、响应式断点
+│       │   ├── layout.css       顶栏、主侧栏（含缩略态）、内容区、响应式断点
 │       │   ├── components.css   导航项、徽标、状态圆点、按钮、占位页
-│       │   └── chat.css         对话页、空状态、消息气泡、输入区
+│       │   └── chat.css         对话页双列布局、会话列表侧栏、空状态、消息气泡、输入区
 │       └── js/
 │           ├── main.js          启动入口：构建导航、初始化路由、装配视图
 │           ├── routes.js        路由与导航的唯一配置源
 │           ├── icons.js         SVG symbol 的 id 常量
-│           ├── router.js        hash 路由解析与视图切换
-│           ├── store.js         内存消息状态与发送队列
+│           ├── router.js        hash 路由解析、主侧栏折叠切换与视图显隐
+│           ├── store.js         多会话状态、草稿管理、消息列表与发送队列
 │           ├── api.js           SSE 客户端
 │           ├── dom.js           DOM 工具与时间戳格式化函数
 │           └── views/
-│               ├── chat.js      对话页视图
+│               ├── chat.js      对话工作区与会话列表视图控制器
 │               └── placeholder.js 占位页视图
 ├── requirements.txt
 ├── start.bat                    一键启动脚本：启动服务并自动弹出默认浏览器
@@ -71,7 +71,7 @@ Lab1/
 浏览器
 ├── index.html / CSS / ES Modules
 │   ├── main.js ── routes.js ── router.js
-│   ├── views/chat.js ── store.js ── api.js
+│   ├── views/chat.js（对话工作区 + 会话列表栏）── store.js ── api.js
 │   └── views/placeholder.js
 └── fetch POST /api/chat（SSE）
         │
@@ -87,11 +87,11 @@ FastAPI（Assistant/app.py）
 |---|---|---|
 | `main.js` | 入口：构建导航、初始化路由、注册全局事件 | 其余全部前端模块 |
 | `routes.js` | 路由、导航标签、图标、页面标题、占位页文案的唯一配置源 | `icons.js` |
-| `router.js` | 解析 hash、切换视图、更新导航高亮与 `document.title` | `routes.js` |
-| `store.js` | 消息数组、发送队列、流状态、ID 与时间戳生成 | `dom.js` |
+| `router.js` | 解析 hash、主侧栏折叠切换、切换视图、更新导航高亮与 `document.title` | `routes.js` |
+| `store.js` | 多会话管理、当前活动会话与草稿文字维护、消息列表、发送队列、流状态、ID 与时间戳生成 | `dom.js` |
 | `api.js` | 组装请求、解析 SSE、回调 `meta` / `delta` / `done` / `error` | 无 |
 | `dom.js` | `el()`、`createSvgIcon()`、`formatTimestamp()`、`scrollToBottom()`、`isNearBottom()` | 无 |
-| `views/chat.js` | 对话页 DOM、输入、渲染、队列驱动、滚动控制 | `store.js`、`api.js`、`dom.js` |
+| `views/chat.js` | 对话页 DOM、会话列表渲染、新建/重命名/删除会话、输入保留与丢弃、队列驱动、滚动控制 | `store.js`、`api.js`、`dom.js` |
 | `views/placeholder.js` | 占位页渲染 | `routes.js`、`dom.js` |
 | `icons.js` | SVG symbol id 常量 | 无 |
 
@@ -100,14 +100,24 @@ FastAPI（Assistant/app.py）
 ### 2.3 对话全链路时序与状态归属
 
 1. 浏览器加载 `/`，`main.js` 根据 `routes.js` 生成侧栏导航，`router.js` 解析 hash；无 hash 或非法 hash 时替换为 `#/chat`。
-2. 用户在输入框输入，发送按钮随内容动态启用或置灰。
-3. 用户按 Enter 或点击发送，前端立即追加用户消息与时间戳，清空输入框并滚到底部。
-4. 前端对截至当前用户消息的历史做快照并入队；若当前无进行中的流式回复，立即出队执行下一条。
-5. 前端追加一条状态为 `streaming` 的 Agent 占位消息（显示三点等待动画），调用 `POST /api/chat`。
-6. 后端校验请求体，通过 `factory.get_agent()` 取得 Agent 实例，返回 `text/event-stream`。
-7. 前端依次处理 `meta`、`delta`、`done`（或 `error`）事件，将增量文本逐块写入当前 Agent 消息节点。
-8. 单条回复结束后，若队列仍有待处理项则继续第 5 步，否则回到空闲状态。
-9. 状态归属：消息、队列、流状态仅保存在浏览器内存（`store.js`），刷新页面即清空；后端无状态；对话页 `#view-chat` DOM 常驻，切换路由仅通过 `hidden` 属性显隐。
+2. 路由进入对话页（`#/chat`）时，左侧主导航自动收缩为仅显示图标的缩略态，紧邻展开会话列表栏；首次加载默认处于未创建的空白草稿态（`activeSessionId = null`），输入框可用，消息区显示空状态。
+3. 用户在输入框输入未发送文字：
+   - 若当前处于草稿态，文字暂存至草稿状态；若处于既有会话，文字暂存至该会话的草稿字段。
+   - 离开对话页切换到其他导航页面再返回时，输入框精准恢复离开前对应会话（或草稿）已输入的未发送文字。
+4. 用户在空白草稿态按 Enter 或点击发送首条消息时：
+   - 前端正式创建新会话，自动提取首条消息前 10 个字作为标题，加入会话列表头部并设为当前活动会话。
+   - 立即追加用户消息与时间戳，清空输入框并滚到底部。
+5. 前端对截至当前用户消息的历史做快照并入队；若当前无进行中的流式回复，立即出队执行下一条。
+6. 前端追加一条状态为 `streaming` 的 Agent 占位消息（显示三点等待动画），调用 `POST /api/chat`。
+7. 后端校验请求体，通过 `factory.get_agent()` 取得 Agent 实例，返回 `text/event-stream`。
+8. 前端依次处理 `meta`、`delta`、`done`（或 `error`）事件，将增量文本逐块写入当前 Agent 消息节点。
+9. 单条回复结束后，若队列仍有待处理项则继续第 5 步，否则回到空闲状态。
+10. 会话交互流转：
+    - 点击"新建对话"：丢弃旧草稿未发送文字，进入空白草稿态；已有会话的未发送文字不受影响。
+    - 切换会话：自动保存当前会话的未发送文字，重绘目标会话的消息列表并恢复其未发送文字。
+    - 重命名：鼠标悬停触发行内编辑，保存后更新会话标题且不再被后续消息覆盖。
+    - 删除：鼠标悬停触发删除，从内存与列表移除该会话；若删除当前查看的会话，页面立即落回空白草稿态。
+11. 状态归属：会话、草稿、消息、队列、流状态仅保存在浏览器内存（`store.js`），刷新页面即清空；后端无状态；对话页 `#view-chat` DOM 常驻，切换路由仅通过 `hidden` 属性显隐。
 
 ### 2.4 功能分支拆分
 
@@ -115,8 +125,9 @@ FastAPI（Assistant/app.py）
 |---|---|---|---|
 | 1 | `feature/app-shell` | Python 服务骨架、配置、健康检查、静态托管；前端外壳、设计令牌、侧栏导航、顶栏、四个占位页、hash 路由；对话页空状态占位 | A1.1 ~ A1.9 |
 | 2 | `feature/mock-agent` | Agent 协议、mock 生成器、工厂、`POST /api/chat` SSE 接口与流式异常处理 | A3.1 ~ A3.3 |
-| 3 | `feature/chat-window` | 对话页完整实现：消息列表、气泡、时间戳、输入区、发送队列、SSE 客户端接入、逐字渲染、自动滚动 | A2.1 ~ A2.9、A4.1 |
-| 4 | `feature/first-release` | 流式失败与网络错误提示、响应式与可访问性收尾、文档同步与第一版全量回归验收 | A1.1 ~ A5.5 |
+| 3 | `feature/chat-window` | 对话页完整实现：消息列表、气泡、时间戳、输入区、发送队列、SSE 客户端接入、逐字渲染、自动滚动 | A2.1 ~ A2.7、A2.9、A4.1 |
+| 4 | `feature/session-list` | 会话列表与导航折叠：多会话模型、延迟创建、导航缩略、会话列表栏、新建/改名/删除、草稿保留与丢弃 | A6.1 ~ A6.11 |
+| 5 | `feature/first-release` | 流式失败与网络错误提示、响应式与可访问性收尾、文档同步与第一版全量回归验收 | A1.1 ~ A6.11 |
 
 ---
 
@@ -211,11 +222,36 @@ class Agent(Protocol):
 
 ### 3.6 前端数据模型与编码约定
 
+- 前端会话对象（`store.js`）：
+
+```js
+{
+  id: 's_<timestamp>_<rand>',
+  title: '首条消息前10字',
+  createdAt: Date,
+  updatedAt: Date,
+  messages: [], // 包含的消息对象列表
+  draft: ''     // 该会话中已输入未发送的草稿文本
+}
+```
+
+- 前端多会话与队列状态（`store.js`）：
+
+```js
+{
+  activeSessionId: null, // 当前活动会话 ID；为 null 时表示处于未创建的空白草稿态
+  draftText: '',         // 空白草稿态中已输入未发送的文字
+  sessions: [],          // 全部已创建会话列表（按时间降序）
+  queue: [],             // 发送队列
+  isStreaming: false     // 是否正在流式生成回复
+}
+```
+
 - 前端消息对象（`store.js`）：
 
 ```js
 {
-  id: 'm_<uuid>',
+  id: 'm_<timestamp>_<rand>',
   role: 'user' | 'assistant',
   content: '',
   createdAt: Date,
@@ -239,7 +275,7 @@ class Agent(Protocol):
 - 命名与格式规定：
   - Python：函数/变量 `snake_case`，类 `PascalCase`，常量 `UPPER_SNAKE_CASE`，4 空格缩进，公开函数写一行中文 docstring。
   - JavaScript：函数/变量 `camelCase`，常量 `UPPER_SNAKE_CASE`，2 空格缩进，分号结尾，单引号字符串，ES Modules。
-  - CSS：BEM 命名（`block__element--modifier`），状态类 `is-active` / `is-disabled` / `is-streaming` / `is-error`，禁止使用 `#id` 选择器写样式，颜色与尺寸统一引用 `--color-*`、`--text-*`、`--space-*`、`--radius-*`、`--layout-*`、`--motion-*`。
+  - CSS：BEM 命名（`block__element--modifier`），状态类 `is-active` / `is-disabled` / `is-streaming` / `is-error` / `is-editing`，主侧栏缩略态 `.app-sidebar--collapsed`，会话列表组件命名（`.chat-sessions`、`.chat-sessions__header`、`.chat-sessions__reserved`、`.chat-sessions__new-btn`、`.chat-sessions__list`、`.session-item`、`.session-item__title`、`.session-item__actions`、`.session-item__btn`、`.session-item__input`），禁止使用 `#id` 选择器写样式，颜色与尺寸统一引用 `--color-*`、`--text-*`、`--space-*`、`--radius-*`、`--layout-*`、`--motion-*`。
 
 ---
 
@@ -449,14 +485,15 @@ class Agent(Protocol):
   1. `.msg` DOM 结构仅包含 `.msg__bubble` 与 `.msg__time` 两个直接子元素，不预留头像槽位或左侧缩进。
   2. `.msg--agent .msg__bubble` 通过 `--color-surface` 背景色与 `1px solid var(--color-border)` 描边在 `--color-bg`（`#1a1a1a`）画布上形成清晰边界。
 
-##### A2.8 会话模型
+##### A2.8 会话模型（已废弃）
 
-**A2_8_1 单一内存会话流与常驻视图**
-- 状态：已完成
+**A2_8_1 单一内存会话流与常驻视图（已废弃）**
+- 状态：已废弃
 - 需求描述：全应用仅维护单一对话流，不提供多会话列表，消息保存在浏览器内存中，刷新页面即清空。
 - 详细方案设计：
   1. 在 `Assistant/web/js/store.js` 中定义单例状态（`messages: []`、`queue: []`、`isStreaming: false`），不读写 `localStorage`、`sessionStorage` 或 `IndexedDB`。
   2. 页面首次加载或浏览器刷新时，`store.messages` 为空，`#chat-empty` 显示"开始和 Agent 对话"空状态；在应用内切换五项导航时，`#view-chat` 仅切换 `hidden` 属性，不销毁已渲染的消息节点。
+  3. 废弃说明：2026-11-06 由 A6.1 到 A6.11（A6_1_1 等实现子项）接替，改为多会话模型与会话列表管理（见 A6.0 子板块）。
 
 ##### A2.9 回复期间可继续输入
 
@@ -581,3 +618,190 @@ class Agent(Protocol):
 - 详细方案设计：
   1. 实现方严格依据 `Spec.md` 中的 `Ax_y_z` 方案编写代码并执行命令行接口与静态资源冒烟验证。
   2. 每个功能分支完成后交由 Fibel / 主 Agent 依据 `Intent.md` 的验收标准逐条核验，确认通过后方可执行分支合并。
+
+---
+
+#### A6.0 会话列表
+
+##### A6.1 多会话模型
+
+**A6_1_1 会话数据结构与多会话内存管理**
+- 状态：已确认
+- 需求描述：对话页支持多个会话，每个会话独立保存自身的消息列表；切换会话只切换显示内容，各会话已产生的消息不丢失、不串扰；会话与消息只存在于内存，刷新页面后清空。
+- 详细方案设计：
+  1. 在 `Assistant/web/js/store.js` 重构状态树，从单一消息列表升级为多会话状态结构：
+     - `sessions`: 会话对象数组，每个会话结构为 `{ id: 's_<timestamp>_<rand>', title: string, createdAt: Date, updatedAt: Date, messages: [], draft: '' }`，按创建或最近活跃时间倒序排列。
+     - `activeSessionId`: 当前处于活跃状态的会话 ID，取值为 `string` 或 `null`（`null` 表示当前处于未创建的空白草稿态）。
+     - `draftText`: 处于空白草稿态时已输入但尚未发送的文字。
+     - `queue` 与 `isStreaming`: 保持现有发送队列快照与流状态定义。
+  2. 导出多会话操作函数：`getSessions()`、`getActiveSessionId()`、`getActiveSession()`、`switchSession(sessionId)`、`getActiveMessages()`；所有数据只保留在 JavaScript 运行时内存，不读写 `localStorage`、`sessionStorage` 或 `IndexedDB`。
+
+**A6_1_2 切换会话的消息区重绘与状态隔离**
+- 状态：已确认
+- 需求描述：用户在会话列表点击切换会话时，消息区立即清空并完整重新渲染目标会话的消息列表与空状态，各会话消息与顺序互不干扰。
+- 详细方案设计：
+  1. 在 `Assistant/web/js/views/chat.js` 实现 `renderActiveSession()`：
+     - 首先清空当前 `#messages` 容器（`messagesEl.replaceChildren()`）；
+     - 若当前处于空白草稿态（`activeSessionId === null`）或当前会话的 `messages` 为空数组，展示 `#chat-empty` 空状态提示；
+     - 若当前会话存在消息，隐藏 `#chat-empty`，遍历该会话的 `messages` 数组，依次调用 `appendMessageNode()` 将用户气泡与 Agent 消息卡片按序渲染至 `#messages`；
+     - 渲染完成后调用 `scrollToBottom(chatScrollEl)` 使视图滚至最新消息。
+  2. 流式期间若发生会话切换，后台 SSE 流式写入仍作用于该请求绑定的会话消息对象，但 DOM 更新只作用于当前处于活动状态的会话，切回时全量重绘保证内容一致性。
+
+##### A6.2 对话页导航折叠
+
+**A6_2_1 主导航对话页缩略态与路由响应式联动**
+- 状态：已确认
+- 需求描述：进入对话页（`#/chat`）时，左侧主导航收为缩略形态，只显示五个入口的图标、不显示文字；切到个人数据库、管理 Mail、手机端联动、配置任一页面时，主导航恢复展开为图标加文字。
+- 详细方案设计：
+  1. 在 `Assistant/web/js/router.js` 的 `syncRoute()` 中判定当前路由视图：
+     - 若 `route.view === 'chat'`，为 `.app-sidebar` 添加 `.app-sidebar--collapsed` 类；
+     - 若 `route.view !== 'chat'`，从 `.app-sidebar` 移除 `.app-sidebar--collapsed` 类。
+  2. 在 `Assistant/web/css/layout.css` 编写折叠态样式：
+     - `.app-sidebar--collapsed` 宽度覆盖为 `var(--layout-sidebar-compact)`（`72px`）；
+     - `.app-sidebar--collapsed .nav__label` 与 `.app-sidebar--collapsed .app-sidebar__footer-text` 采用隐藏样式（`position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;`），隐藏文字同时保留语义供无障碍设备读取；
+     - `.app-sidebar--collapsed .nav__link` 采用居中布局（`justify-content: center; padding: 0;`），保留原有 `title` 属性用于鼠标悬停提示；五个导航入口的点击跳转与激活态逻辑完全保持不变。
+  3. 平板断点（`max-width: 1023px`）与手机断点（`max-width: 767px`）下，原有断点样式保证侧栏始终收缩为紧凑图标栏，两者规则协调一致。
+
+##### A6.3 会话列表栏
+
+**A6_3_1 对话页双列结构与会话列表栏布局**
+- 状态：已确认
+- 需求描述：在缩略导航栏右侧紧邻出现第二列会话列表栏，只在对话页显示；栏内自上而下为顶部操作区与会话列表滚动区。
+- 详细方案设计：
+  1. 在 `Assistant/web/index.html` 的 `#view-chat` 内部搭建水平双列结构：
+     - 左列为会话列表栏 `<aside class="chat-sessions" id="chat-sessions" aria-label="会话列表">`；
+     - 右列为主对话区 `<div class="chat" id="chat-main">`。
+  2. 在 `Assistant/web/css/chat.css` 中声明布局规格：
+     - `.view--chat` 设为 `flex-direction: row; height: 100%; width: 100%; max-width: 100%; padding: 0; margin: 0;`；
+     - `.chat-sessions` 宽度固定为 `240px`（`var(--layout-session-width, 240px)`），`flex-shrink: 0`，背景色为 `--color-surface`，右边缘使用 `1px solid var(--color-border-sidebar)`；
+     - `.chat-sessions` 内部垂直分为固定高度顶部操作区 `.chat-sessions__header` 与下方弹性滚动区 `.chat-sessions__list`（`flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;`）；
+     - 右侧 `.chat` 主体保持 `flex: 1; min-width: 0; display: flex; flex-direction: column;`。
+  3. 切换到其他非对话页面时，由于外层 `#view-chat` 带有 `hidden` 属性，会话列表栏随之隐藏，其他页面占位区不受任何影响。
+
+##### A6.4 新建对话
+
+**A6_4_1 延迟创建机制与新建草稿态流转**
+- 状态：已确认
+- 需求描述：会话列表栏顶部提供"新建对话"按钮，点击后进入一个空白草稿会话，可直接输入；草稿在发出第一条用户消息之前不出现在会话列表中，发出第一条消息后才正式创建并加入列表；首次打开应用或点击"新建对话"时落在空白草稿上，不自动打开已有会话。
+- 详细方案设计：
+  1. 在 `.chat-sessions__header` 中提供新建对话按钮 `<button class="chat-sessions__new-btn" id="new-chat-button" type="button"><svg class="chat-sessions__new-icon" viewBox="0 0 24 24"><use href="#icon-plus"></use></svg><span>新建对话</span></button>`。
+  2. 在 `Assistant/web/index.html` 的内联 SVG sprite 中增加 `icon-plus` symbol。
+  3. 页面初次加载或用户点击"新建对话"按钮时：
+     - 若当前已处于空白草稿态且输入框有文字，执行 A6.11 清空并丢弃草稿文字；
+     - 若当前处于已有会话，保存该会话未发送文字至该会话对象（A6.10）；
+     - 调用 `store.enterDraft()`，将 `activeSessionId` 设为 `null`；
+     - 清空 `#messages` 容器并显示 `#chat-empty`，会话列表中所有条目均移除 `.is-active` 激活态；
+     - 将输入框值置空（或恢复为空草稿），高度重置为单行，禁用发送按钮，自动调用 `composerInputEl.focus()` 保持焦点就绪。
+  4. 用户在草稿态发出第一条消息时，调用 `store.createSessionFromDraft(content)`：
+     - 生成唯一 ID（`s_<timestamp>_<rand>`）；
+     - 自动截取首条消息前 10 字为标题（A6.5）；
+     - 将新会话推入 `store.sessions` 列表最前；
+     - 将 `activeSessionId` 设为该会话 ID；
+     - 触发会话列表重新渲染并将该新会话置为激活高亮状态，随后将首条用户消息放入该会话并进入正常发送与回复流程。
+
+##### A6.5 会话标题自动生成
+
+**A6_5_1 首条消息截字算法与即时标题渲染**
+- 状态：已确认
+- 需求描述：会话在发出第一条用户消息时正式创建，标题自动取该条消息的前 10 个字；标题在会话出现在列表时即已生成；消息不足 10 个字时标题与消息全文一致。
+- 详细方案设计：
+  1. 在 `store.js` 的 `createSessionFromDraft(firstUserContent)` 中实现标题生成算法：
+     - 过滤首尾空白字符：`const trimmed = firstUserContent.trim();`；
+     - 截取前 10 个字符：`const title = trimmed.slice(0, 10);`；
+     - 若字符串长度小于或等于 10，`slice(0, 10)` 自然保留全部文字；若大于 10 则精确截取前 10 个字。
+  2. 新会话节点插入会话列表 DOM 时，直接使用该 `title` 作为 `.session-item__title` 的文字内容，并设置 `title` HTML 属性供长文本悬停查阅完整标题；标题在节点首次出现时即确定，无后续重新生成逻辑。
+
+##### A6.6 会话重命名
+
+**A6_6_1 悬停快捷入口与行内编辑保存交互**
+- 状态：已确认
+- 需求描述：鼠标悬停在会话条目上时显示重命名入口，点击后可编辑标题并保存，列表与当前会话标题同步更新；自动标题先于重命名发生，重命名结果不会被后续消息覆盖。
+- 详细方案设计：
+  1. 在 `Assistant/web/index.html` 的内联 SVG sprite 中增加 `icon-pencil` 线性编辑图标 symbol。
+  2. 在每个会话条目 DOM 中构建操作按钮组 `<div class="session-item__actions">`，内含 `<button class="session-item__action-btn" data-action="rename" title="重命名" aria-label="重命名会话"><svg viewBox="0 0 24 24"><use href="#icon-pencil"></use></svg></button>`。
+  3. 悬停交互：在 `chat.css` 中设置 `.session-item__actions` 默认 `opacity: 0`；当 `.session-item:hover` 或 `.session-item:focus-within` 时 `opacity: 1`。
+  4. 点击重命名按钮时（阻止事件冒泡防止触发会话切换），条目进入编辑态：
+     - 为 `.session-item` 增加 `.is-editing` 类；
+     - 隐藏原有的 `.session-item__title` 与操作组，原地插入单行文本框 `<input class="session-item__input" type="text" maxlength="50">`；
+     - 输入框初始值为当前标题文本，自动执行 `input.focus()` 与 `input.select()`。
+  5. 提交与取消：
+     - 监听输入框的 `keydown`：若按 `Enter` 触发保存；若按 `Esc` 触发取消并还原原标题；
+     - 监听输入框的 `blur`：触发保存；
+     - 保存逻辑：读取 `input.value.trim()`，若非空且与原标题不同，调用 `store.renameSession(sessionId, newTitle)` 更新内存会话对象并刷新条目显示；若为空串则取消本次修改并恢复原标题；
+     - 退出编辑态，移除 `.is-editing` 并恢复标题与操作组。
+  6. 后续消息免疫：由于会话在发出首条消息时已完成创建，后续继续发送消息仅追加至 `messages` 数组，不再触发生效自动标题逻辑，重命名结果始终保留。
+
+##### A6.7 会话删除
+
+**A6_7_1 悬停删除入口与活动会话回退草稿态**
+- 状态：已确认
+- 需求描述：鼠标悬停在会话条目上时显示删除入口，触发后删除该会话及其全部消息；若删除的是当前正在查看的会话，页面落在一个空白草稿会话上，不自动打开其他会话。
+- 详细方案设计：
+  1. 在 `Assistant/web/index.html` 的内联 SVG sprite 中增加 `icon-trash` 垃圾桶线性图标 symbol。
+  2. 在会话条目的 `.session-item__actions` 内增加删除按钮 `<button class="session-item__action-btn" data-action="delete" title="删除会话" aria-label="删除会话"><svg viewBox="0 0 24 24"><use href="#icon-trash"></use></svg></button>`。
+  3. 点击删除按钮时调用 `event.stopPropagation()`，在 `views/chat.js` 中触发会话删除流程：
+     - 调用 `store.deleteSession(sessionId)`：从 `store.sessions` 中过滤掉该会话及其全部消息；
+     - 从会话列表 DOM 容器中移除对应的 `.session-item` 节点；
+     - 若被删除的会话正好是当前活动会话（`sessionId === store.getActiveSessionId()`）：
+       - 调用 `store.enterDraft()` 将 `activeSessionId` 重置为 `null`；
+       - 清空当前草稿文字与输入框（`composerInputEl.value = ''`），重置高度并禁用发送按钮；
+       - 清空 `#messages` 容器并显示 `#chat-empty` 空状态；
+       - 不自动切换或打开会话列表中的其他既有会话；
+     - 若被删除的会话是非当前活动会话，当前正在查看的会话内容、输入框文字与滚动状态保持不变。
+
+##### A6.8 顶部预留区
+
+**A6_8_1 会话栏顶部扩展区结构预留**
+- 状态：已确认
+- 需求描述：会话列表栏顶部在"新建对话"按钮所在区域内预留一块空白区域，供后续新增的同类模块入口使用；第一版该区域不放任何控件，不挤占会话列表的滚动区域。
+- 详细方案设计：
+  1. 在 `Assistant/web/index.html` 的 `.chat-sessions__header` 内部增加预留容器：`<div class="chat-sessions__reserved" id="chat-sessions-reserved" aria-hidden="true"></div>`。
+  2. 在 `Assistant/web/css/chat.css` 中为 `.chat-sessions__reserved` 定义弹性预留空间：
+     - 高度保持为紧凑预留（`min-height: 8px` 或空块容器），内容为空；
+     - 不包含任何按钮、图标、表单或文字；
+     - 设置 `pointer-events: none`，确保不捕获任何鼠标事件；
+     - 该预留区置于顶部固定栏 `.chat-sessions__header` 内，下方会话列表单独滚动，杜绝挤占或遮挡会话条目滚动区域。
+
+##### A6.9 草稿输入保留
+
+**A6_9_1 空白草稿未发送文字跨路由保留与恢复**
+- 状态：已确认
+- 需求描述：在空白草稿会话的输入框中已输入但尚未发送的文字，在离开对话页（切到个人数据库、管理 Mail、手机端联动、配置任一页面）后返回时仍然保留，返回后可直接继续编辑或发送。
+- 详细方案设计：
+  1. 在空白草稿态（`activeSessionId === null`）下，用户在 `composerInputEl` 中键入文字时，输入事件触发 `store.setDraftText(composerInputEl.value)`，实时将未发送文字暂存在 `store.draftText` 中。
+  2. 前端路由采用常驻 DOM 方案：切换到其他非对话路由时，`#view-chat` 仅设置 `hidden = true`，DOM 实例与输入框内容完整保留在浏览器内存中；切回 `#/chat` 时，`#view-chat` 重新可见，输入框文字自然完好如初。
+  3. 路由重置或视图激活钩子中，从 `store.getDraftText()` 读取草稿文字与输入框核对，调用 `adjustInputHeight()` 恢复文本框伸缩高度，并调用 `syncSendButtonState()` 恢复发送按钮的可用状态。
+
+##### A6.10 会话输入保留（全部会话）
+
+**A6_10_1 全部会话各自维护未发送草稿与切会话恢复**
+- 状态：已确认
+- 需求描述：每个会话各自记住输入框中尚未发送的文字；在会话之间切换、或切换到其他导航页再返回时，返回的会话恢复它自己的未发送文字；已发送的消息不受影响。
+- 详细方案设计：
+  1. 在每个正式会话对象中维护 `draft: string` 属性（默认空串 `''`）。
+  2. 会话离开时保存未发送文字：
+     - 当用户点击切换至另一个会话、或点击新建对话、或路由离开对话页时，执行 `saveCurrentDraft()`；
+     - 若当前处于已有会话（`activeSessionId !== null`），将当前输入框内容写入该会话：`session.draft = composerInputEl.value`；
+     - 若当前处于空白草稿态（`activeSessionId === null`），写入 `store.draftText = composerInputEl.value`。
+  3. 会话进入时恢复未发送文字：
+     - 当用户切入目标会话时，执行 `restoreDraft()`；
+     - 若切入的是已有会话，从该会话对象读取 `session.draft`，赋值给 `composerInputEl.value`；
+     - 若切入的是空白草稿态，从 `store.draftText` 读取并赋值给 `composerInputEl.value`；
+     - 恢复后立即调用 `adjustInputHeight()` 自适应文本域高度，调用 `syncSendButtonState()` 联动发送按钮状态；
+  4. 当某会话成功发送一条消息后，仅将该会话自身的 `draft` 清空为 `''`，其他会话已保存的未发送文字互不影响。
+
+##### A6.11 新建对话丢弃旧草稿
+
+**A6_11_1 显式新建对话清空丢弃未发送草稿**
+- 状态：已确认
+- 需求描述：当空白草稿会话中已有未发送文字时点击"新建对话"，旧草稿及其文字直接丢弃，不做保留，也不提供返回旧草稿的入口；浏览页面、切换会话等非"新建对话"的操作仍按 A6.9 与 A6.10 保留文字；已经发出过消息的会话不属于草稿，不受本条目影响。
+- 详细方案设计：
+  1. 在"新建对话"按钮的点击事件处理函数 `handleNewChat()` 中进行条件分支处理：
+     - 若当前本身处于空白草稿态（`activeSessionId === null`）：
+       - 显式执行 `store.clearDraftText()`，将内存中的 `store.draftText` 重置为空串 `''`；
+       - 将 `composerInputEl.value = ''`，输入框高度重置为单行（`resetInputHeight()`），发送按钮置灰禁用；
+       - 不创建任何隐藏或撤销条目，旧草稿文字彻底丢弃；
+     - 若当前正处于某一既有正式会话（`activeSessionId !== null`）：
+       - 首先按 A6.10 将输入框文字保存至该会话的 `draft` 属性中（安全保留既有会话输入）；
+       - 随后调用 `store.enterDraft()` 进入全新的空白草稿态，并将 `store.draftText` 设为空串 `''`，清空输入框并重置界面；
+  2. 既有会话已进入列表，不属于草稿范畴；非新建操作（在已创建会话间点击切换、点击其他导航入口浏览页面）均不走丢弃逻辑，严格执行 A6.9 与 A6.10 的草稿恢复机制。
