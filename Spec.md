@@ -265,6 +265,7 @@ class Agent(Protocol):
   1. 在 `Assistant/app.py` 创建 `FastAPI` 实例时设置 `docs_url=None`、`redoc_url=None`（防止加载外部 CDN 资源），保留 `openapi_url="/api/openapi.json"`。
   2. 注册 HTTP 中间件 `no_cache_static_middleware`：对所有非 `/api` 前缀的 `GET` 响应设置 `Cache-Control: no-cache`。
   3. 在 `/api` 路由注册完成后，使用 `StaticFiles(directory=str(WEB_DIR), html=True)` 挂载到 `/`。
+  4. 在挂载静态目录前调用 `mimetypes.add_type("text/javascript", ".js")` 与 `mimetypes.add_type("text/css", ".css")`，规避 Windows 注册表将 `.js` 映射为 `text/plain` 导致浏览器拒绝执行 ES Modules 的问题。
 
 **A1_1_3 离线内联图标库与系统字体栈**
 - 状态：已完成

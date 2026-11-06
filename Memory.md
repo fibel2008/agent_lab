@@ -42,6 +42,7 @@
 3.2 2026-11-06 本机默认 Python 为 3.14，部分 Web 依赖在该版本上的兼容性未经确认。计划用 3.12 建立虚拟环境。
 3.3 2026-11-06 `py -3.12` 报 "No runtime installed"，实际 3.12.13 的启动器注册名为 `Astral\CPython3.12.13`；创建虚拟环境使用 `py -V:Astral\CPython3.12.13 -m venv .venv`。
 3.4 2026-11-06 Starlette 的 `TestClient` 额外依赖 `httpx`；在不引入额外测试依赖的前提下，可通过启动子进程配合标准库 `urllib.request` 完成接口与静态资源冒烟验证。
+3.5 2026-11-06 Windows 注册表默认将 `.js` 的 Content Type 设为 `text/plain`，Python `mimetypes` 读取注册表后导致 `StaticFiles` 以 `text/plain` 返回 JS 模块，触发浏览器 ES Modules 严格 MIME 校验报错并拒绝执行 `main.js`，表现为侧栏五项导航完全不渲染；在 `app.py` 中显式调用 `mimetypes.add_type("text/javascript", ".js")` 修复。
 
 ## 4. 下一步
 

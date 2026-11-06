@@ -1,12 +1,17 @@
 """FastAPI 应用装配：路由注册、缓存控制中间件与静态资源托管。"""
 
 from collections.abc import Awaitable, Callable
+import mimetypes
 
 from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
 
 from .api.health import router as health_router
 from .config import APP_VERSION, WEB_DIR
+
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("image/svg+xml", ".svg")
 
 
 def create_app() -> FastAPI:
