@@ -12,7 +12,7 @@ from .config import APP_VERSION, WEB_DIR
 def create_app() -> FastAPI:
     """创建并装配 FastAPI 应用实例。"""
     application = FastAPI(
-        title="Agent 学习助手",
+        title="Emibot",
         version=APP_VERSION,
         docs_url=None,
         redoc_url=None,

@@ -1,4 +1,4 @@
-# Spec：Agent 学习助手
+# Spec：Emibot
 
 <!-- 文档职责：回答"具体怎么实现"。
      只写目录结构、模块划分、接口定义、界面规格、命名约定与验收步骤。
@@ -86,7 +86,7 @@ py -V:Astral\CPython3.12.13 -m venv .venv
 ```
 
 3.2.1 必须在项目根目录执行，`Assistant` 才能作为包被发现。
-3.2.2 启动成功后打印一行：`Agent 学习助手已启动：http://127.0.0.1:8000`。
+3.2.2 启动成功后打印一行：`Emibot 已启动：http://127.0.0.1:8000`。
 3.2.3 浏览器访问 `http://127.0.0.1:8000/`；健康检查为 `GET http://127.0.0.1:8000/api/health`。
 3.2.4 不开启 `--reload`：第一版不引入文件监听依赖；修改前端后刷新浏览器即可，修改 Python 后重启进程。
 
@@ -347,7 +347,7 @@ def get_agent() -> Agent:
 | 命中关键词 | 回复方向 |
 |---|---|
 | 你好、hello、hi | 问候，并说明当前是 mock 模式、可以聊什么 |
-| 你是谁、介绍、名字 | 说明自己是 Agent 学习助手，用于演示对话主流程 |
+| 你是谁、介绍、名字 | 说明自己是 Emibot，用于演示对话主流程 |
 | 学习、怎么学、agent | 给出三步学习建议：先跑通对话、再理解工具调用、最后做记忆 |
 | 数据库、记忆、笔记 | 说明个人数据库与记忆功能将在后续版本开放 |
 | 其他 | 复述用户输入，并追问一个具体的学习问题 |
@@ -398,9 +398,9 @@ def get_agent() -> Agent:
   <a class="skip-link" href="#main-content">跳到主内容</a>
 
   <header class="app-header">
-    <a class="app-brand" href="#/chat" aria-label="Agent 学习助手首页">
+    <a class="app-brand" href="#/chat" aria-label="Emibot 首页">
       <span class="app-brand__mark" aria-hidden="true"><svg>...</svg></span>
-      <span class="app-brand__name">Agent 学习助手</span>
+      <span class="app-brand__name">Emibot</span>
     </a>
     <span class="app-header__divider" aria-hidden="true"></span>
     <h1 class="app-header__title" id="page-title">对话</h1>
@@ -449,7 +449,7 @@ def get_agent() -> Agent:
 7.4.1 无 hash 或 hash 为空时，用 `history.replaceState` 写入 `#/chat`，不新增历史记录。
 7.4.2 无法识别的 hash 同样替换为 `#/chat`。
 7.4.3 导航项当前页使用 `aria-current="page"` 并加 `.is-active`。
-7.4.4 `document.title` 更新为 `<页面标题> · Agent 学习助手`。
+7.4.4 `document.title` 更新为 `<页面标题> · Emibot`。
 
 ### 7.5 页面切换
 

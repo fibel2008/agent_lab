@@ -15,7 +15,7 @@ def main() -> None:
     from .app import app
     from .config import HOST, PORT
 
-    print(f"Agent 学习助手已启动：http://{HOST}:{PORT}", flush=True)
+    print(f"Emibot 已启动：http://{HOST}:{PORT}", flush=True)
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")
 
 

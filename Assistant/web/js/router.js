@@ -22,7 +22,7 @@ export function initRouter({
     if (pageTitleEl) {
       pageTitleEl.textContent = route.title;
     }
-    document.title = `${route.title} · Agent 学习助手`;
+    document.title = `${route.title} · Emibot`;
 
     if (navListEl) {
       const links = navListEl.querySelectorAll('.nav__link');
