@@ -50,6 +50,7 @@ Lab1/
 │               ├── chat.js      对话页视图
 │               └── placeholder.js 占位页视图
 ├── requirements.txt
+├── start.bat                    一键启动脚本：启动服务并自动弹出默认浏览器
 ├── .gitignore
 ├── Intent.md
 ├── Spec.md
@@ -129,6 +130,7 @@ FastAPI（Assistant/app.py）
 | `ASSISTANT_PORT` | `int` / `8000` | 环境变量；要求 `>= 1`，非法值回退默认并打 warning 日志 |
 | `ASSISTANT_STREAM_DELAY_MS` | `int` / `20` | 环境变量；每个文本块间隔毫秒数，要求 `>= 0` |
 | `ASSISTANT_CHUNK_SIZE` | `int` / `1` | 环境变量；每个文本块字符数，要求 `>= 1` |
+| `ASSISTANT_OPEN_BROWSER` | `bool` / `False` | 环境变量；设为 `1` 或 `true` 时服务就绪后自动弹出默认浏览器 |
 | `APP_VERSION` | `"0.1.0"` | 常量；应用版本号 |
 | `MAX_MESSAGES` | `30` | 常量；单次请求最大消息条数 |
 | `MAX_MESSAGE_CHARS` | `4000` | 常量；单条消息最大字符数 |
@@ -288,6 +290,14 @@ class Agent(Protocol):
 - 详细方案设计：
   1. 在 `Assistant/config.py` 初始化名称为 `assistant` 的标准库 `logging` 记录器（格式 `%(asctime)s %(levelname)s %(name)s %(message)s`），实现 `_read_int_env(name, default, min_value)`，对空串、非整数或越界值打印 warning 并回退默认值。
   2. 在 `Assistant/api/health.py` 实现 `GET /api/health`，返回 `status="ok"`、`version=APP_VERSION`、`agent` 名称与本地 ISO 8601 时间戳。
+
+**A1_2_3 一键启动文件与自动弹出默认浏览器**
+- 状态：已完成
+- 需求描述：在项目根目录提供一键启动文件 `start.bat`，打开后直接启动后端服务，并在服务就绪后自动用系统默认浏览器弹出工作台网页。
+- 详细方案设计：
+  1. 在项目根目录新增 `start.bat`：切换代码页为 UTF-8（`chcp 65001 >nul`），定位到脚本所在目录（`cd /d "%~dp0"`），设置环境变量 `ASSISTANT_OPEN_BROWSER=1`，调用 `".\.venv\Scripts\python.exe" -m Assistant` 启动服务；若异常退出则执行 `pause` 保留窗口便于查看报错。
+  2. 在 `Assistant/config.py` 新增布尔配置 `OPEN_BROWSER`（当环境变量 `ASSISTANT_OPEN_BROWSER` 为 `"1"` 或 `"true"` 时为 `True`，默认 `False`）。
+  3. 在 `Assistant/__main__.py` 中：当 `OPEN_BROWSER` 为 `True` 时，在调用 `uvicorn.run()` 前启动一个守护线程 `_open_browser_when_ready(host, port)`，轮询 `http://{host}:{port}/api/health` 直到返回 `200`（最长等待 5 秒），随即调用标准库 `webbrowser.open(f"http://{host}:{port}/")` 自动弹出默认浏览器。
 
 ##### A1.3 后台布局
 
