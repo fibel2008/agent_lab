@@ -61,6 +61,12 @@
   color: var(--color-primary);
 }
 
+.badge--neutral {
+  background-color: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+
 .badge__dot {
   width: 6px;
   height: 6px;
@@ -74,6 +80,50 @@
   border-radius: var(--radius-pill);
   background-color: var(--color-success);
   flex-shrink: 0;
+}
+
+/* 占位页：图标 48px 置于 72px 圆形背景，标题 20px/600，状态徽标，说明 13px，最大宽度 420px */
+.view--placeholder {
+  align-items: center;
+  justify-content: center;
+}
+
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 420px;
+  padding: var(--space-6);
+  gap: var(--space-3);
+}
+
+.placeholder__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-primary-soft);
+  color: var(--color-primary);
+  margin-bottom: var(--space-1);
+}
+
+.placeholder__icon svg {
+  width: 48px;
+  height: 48px;
+}
+
+.placeholder__title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.placeholder__text {
+  font-size: 13px;
+  color: var(--color-text-muted);
 }
 
 /* 图标栏响应式：1023px 以下隐藏导航文字但保留 DOM 供辅助技术读取 */

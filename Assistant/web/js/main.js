@@ -3,6 +3,7 @@
 import { createSvgIcon } from './dom.js';
 import { initRouter } from './router.js';
 import { ROUTES } from './routes.js';
+import { renderPlaceholder } from './views/placeholder.js';
 
 function buildNavList(navListEl) {
   if (!navListEl) {
@@ -44,6 +45,11 @@ function bootstrap() {
     pageTitleEl,
     viewChatEl,
     viewPlaceholderEl,
+    onRouteRender(route) {
+      if (route.view === 'placeholder') {
+        renderPlaceholder(viewPlaceholderEl, route);
+      }
+    },
   });
 }
 
