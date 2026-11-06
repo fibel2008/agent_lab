@@ -18,6 +18,9 @@ dist/
 # 临时规格文件
 spec_temp.md
 
+# 阶段归档目录
+Archive/
+
 # 编辑器与系统
 .vscode/
 .idea/
