@@ -641,7 +641,7 @@ class Agent(Protocol):
 - 需求描述：对话页支持多个会话，每个会话独立保存自身的消息列表；切换会话只切换显示内容，各会话已产生的消息不丢失、不串扰；会话与消息只存在于内存，刷新页面后清空。
 - 详细方案设计：
   1. 在 `Assistant/web/js/store.js` 重构状态树，从单一消息列表升级为多会话状态结构：
-     - `sessions`: 会话对象数组，每个会话结构为 `{ id: 's_<timestamp>_<rand>', title: string, createdAt: Date, updatedAt: Date, messages: [], draft: '' }`，按创建或最近活跃时间倒序排列。
+     - `sessions`: 会话对象数组，每个会话结构为 `{ id: 's_<timestamp>_<rand>', title: string, createdAt: Date, updatedAt: Date, messages: [], draft: '' }`，严格按会话中最新一条信息的时间倒序排列；若会话无消息则以 `updatedAt` / `createdAt` 兜底；在新增消息、追加占位、创建会话时自动执行 `sortSessions()` 保证列表顶部始终为最新活跃会话。
      - `activeSessionId`: 当前处于活跃状态的会话 ID，取值为 `string` 或 `null`（`null` 表示当前处于未创建的空白草稿态）。
      - `draftText`: 处于空白草稿态时已输入但尚未发送的文字。
      - `queue`: 全局发送队列，元素为 `{ sessionId: string, messageId: string, snapshot: Array }`。
@@ -687,17 +687,23 @@ class Agent(Protocol):
 
 **A6_3_1 对话页双列结构与会话列表栏布局**
 - 状态：已完成
-- 需求描述：在缩略导航栏右侧紧邻出现第二列会话列表栏，只在对话页显示；栏内自上而下为顶部操作区与会话列表滚动区。
+- 需求描述：在缩略导航栏右侧紧邻出现第二列会话列表栏，只在对话页显示；栏内自上而下为顶部操作区、会话列表滚动区与底部收缩操作区；支持收缩展开，默认不收缩，当窗口页面不足（< 1024px）时自适应收缩，并在会话列表栏底部提供收缩按钮，点击后收缩至左侧导航栏最底部。
 - 详细方案设计：
   1. 在 `Assistant/web/index.html` 的 `#view-chat` 内部搭建水平双列结构：
      - 左列为会话列表栏 `<aside class="chat-sessions" id="chat-sessions" aria-label="会话列表">`；
      - 右列为主对话区 `<div class="chat" id="chat-main">`。
-  2. 在 `Assistant/web/css/chat.css` 中声明布局规格：
+  2. 在 `Assistant/web/css/chat.css` 与 `layout.css` 中声明布局与收缩规格：
      - `.view--chat` 设为 `flex-direction: row; height: 100%; width: 100%; max-width: 100%; padding: 0; margin: 0;`；
-     - `.chat-sessions` 宽度固定为 `240px`（`var(--layout-session-width, 240px)`），`flex-shrink: 0`，背景色为 `--color-surface`，右边缘使用 `1px solid var(--color-border-sidebar)`；
-     - `.chat-sessions` 内部垂直分为固定高度顶部操作区 `.chat-sessions__header` 与下方弹性滚动区 `.chat-sessions__list`（`flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;`）；
+     - `.chat-sessions` 宽度固定为 `240px`（`var(--layout-session-width, 240px)`），`flex-shrink: 0`，背景色为 `--color-surface`，右边缘使用 `1px solid var(--color-border-sidebar)`，配置 `transition: width var(--motion-base), opacity var(--motion-fast); overflow: hidden;`；
+     - `.chat-sessions.is-collapsed` 设置 `width: 0 !important; min-width: 0 !important; border-right-width: 0 !important; border-right-color: transparent !important; opacity: 0; pointer-events: none;`；
+     - `.chat-sessions` 内部垂直分为固定高度顶部操作区 `.chat-sessions__header`、弹性滚动区 `.chat-sessions__list` 与底部收缩操作区 `.chat-sessions__footer`（内含 `<button id="collapse-sessions-btn">`，挂载 `icon-chevron-left` 图标）；
+     - 左侧主导航 `.app-sidebar` 最底部增加 `<button class="app-sidebar__expand-btn" id="expand-sessions-btn">`（挂载 `icon-chevron-right` 图标），在折叠缩略态下仅显示居中图标并提供 title 悬停提示；
      - 右侧 `.chat` 主体保持 `flex: 1; min-width: 0; display: flex; flex-direction: column;`。
-  3. 切换到其他非对话页面时，由于外层 `#view-chat` 带有 `hidden` 属性，会话列表栏随之隐藏，其他页面占位区不受任何影响。
+  3. 收缩展开状态与小屏自适应流转（`views/chat.js` 与 `main.js`）：
+     - 默认状态：桌面视口（≥ 1024px）下默认不收缩；
+     - 自适应收缩：通过 `window.matchMedia('(max-width: 1023px)')` 监听视口，当视口收窄至不足 1024px 时自动为 `.chat-sessions` 添加 `.is-collapsed`，并在 `.app-sidebar` 最底部显示展开按钮；
+     - 手动交互：点击 `#collapse-sessions-btn` 时将会话栏收缩至 0 宽并在主导航底部展示 `#expand-sessions-btn`；点击 `#expand-sessions-btn` 时恢复 240px 宽度并隐藏自身；
+     - 路由联动：切换到其他非对话页面时，由于外层 `#view-chat` 带有 `hidden` 属性，会话列表栏隐藏且 `#expand-sessions-btn` 强制隐藏；切回对话页时根据当前的收缩状态恢复显隐。
 
 ##### A6.4 新建对话
 
@@ -737,7 +743,7 @@ class Agent(Protocol):
 - 需求描述：鼠标悬停在会话条目上时显示重命名入口，点击后可编辑标题并保存，列表与当前会话标题同步更新；自动标题先于重命名发生，重命名结果不会被后续消息覆盖；严格拦截事件冒泡、中文选字回车误触、失焦重复提交与列表重绘冲突。
 - 详细方案设计：
   1. 在 `Assistant/web/index.html` 的内联 SVG sprite 中增加 `icon-pencil` 线性编辑图标 symbol。
-  2. 在每个会话条目 DOM 中构建操作按钮组 `<div class="session-item__actions">`，内含 `<button class="session-item__action-btn" data-action="rename" title="重命名" aria-label="重命名会话"><svg viewBox="0 0 24 24"><use href="#icon-pencil"></use></svg></button>`。
+  2. 在每个会话条目 DOM 中构建操作按钮组 `<div class="session-item__actions">`，通过 `createSvgIcon('icon-pencil')` 严格在 SVG 命名空间下挂载矢量图标，按钮配色应用 `--color-text-secondary`，杜绝命名空间缺失导致的透明隐形。
   3. 悬停交互：在 `chat.css` 中设置 `.session-item__actions` 默认 `opacity: 0`；当 `.session-item:hover` 或 `.session-item:focus-within` 时 `opacity: 1`。
   4. 点击重命名按钮时调用 `event.stopPropagation()`，条目进入编辑态：
      - 为 `.session-item` 增加 `.is-editing` 类；条目内包含标记变量 `let isCommitted = false;` 与组合状态 `let isInputComposing = false;`；
@@ -761,7 +767,7 @@ class Agent(Protocol):
 - 需求描述：鼠标悬停在会话条目上时显示删除入口，触发后删除该会话及其全部消息；若删除正在流式的会话，中止网络连接并复位状态防止死锁；若删除当前正在查看的会话，页面落回空白草稿会话。
 - 详细方案设计：
   1. 在 `Assistant/web/index.html` 的内联 SVG sprite 中增加 `icon-trash` 垃圾桶线性图标 symbol。
-  2. 在会话条目的 `.session-item__actions` 内增加删除按钮 `<button class="session-item__action-btn" data-action="delete" title="删除会话" aria-label="删除会话"><svg viewBox="0 0 24 24"><use href="#icon-trash"></use></svg></button>`。
+  2. 在会话条目的 `.session-item__actions` 内增加删除按钮，通过 `createSvgIcon('icon-trash')` 严格在 SVG 命名空间下挂载矢量图标，配色应用 `--color-text-secondary`（悬停 `--color-danger`）。
   3. 点击删除按钮时调用 `event.stopPropagation()`，在 `views/chat.js` 中触发会话删除流程：
      - 流式中止与死锁保护：检查当前全局状态，若当前 `store.isStreaming` 为 `true` 且正在流式处理的请求属于目标被删除会话：
        a. 立即调用 `store.currentAbortController.abort()` 中止底层 fetch SSE 数据流；
