@@ -25,6 +25,7 @@
 2026-11-06：推进 A6 开发并完成三项优化：1) 修复悬停会话条目时重命名与删除按钮因未指定 SVG 命名空间导致的透明隐形缺陷，升级为 createSvgIcon 与高对比度配色；2) 会话列表改为按最新一条信息（用户或 Agent）的时间降序排序，任何会话产生新消息后即时移至列表顶部；3) 会话列表栏支持收缩展开，桌面（≥ 1024px）默认不收缩，窗口不足（< 1024px）时自适应收缩，并在列表底部提供收缩按钮，点击后收缩至 0 宽隐藏，展开按钮显示在左侧导航栏最底部，切到其他页面自动隐藏。完成 Headless Edge CDP 全链路自动化端到端测试与冒烟验证。
 2026-11-06：完成 Spec.md 第二版在线对话（B1.0）深度架构审查与系统性缺陷修复：基于跨 Agent 评审报告全面修复 6 项一档致命隐患、5 项二档实现空缺及三档规范问题，确立单会话自增序号、会话级流状态映射、RESTful 消息触发解耦、单一事实来源错误码表、无工具流式防泄露与 aiosqlite/httpx 异步技术栈。
 2026-11-06：完成 Spec.md 第二轮并发、安全与一致性核验修订：统一 `dispatch_action(self, tool_call: ToolCall)` 签名；将 `feature/session-list` 标记为已完成，并按纵向依赖重排分支 5/6/7；补齐 `NETWORK_ERROR` 错误码与 4xx/5xx 映射，并在 `GET /api/sessions/{id}/messages` 中由后端统一返回 `error_message`；采用 FastAPI lifespan 单一共享 `aiosqlite.Connection` + `asyncio.Lock` 写锁 + `busy_timeout=5000` 方案；规定 409 同步占位、终态先落盘再广播、删除会话先 `cancel_and_wait`、优雅停服及 `Origin`/`Host` 环回校验。
+2026-11-06：完成第二版 `feature/storage-crud` 分支开发与端到端验证：实现 SQLite 异步仓储层（aiosqlite 单连接 + 写锁 + busy_timeout=5000 + WAL 模式 + CASCADE 外键约束）、会话与消息 CRUD、会话自增序号 seq 与 error_code 统一映射、跨站写请求 Origin/Host 环回白名单中间件；实现顶栏形态切换胶囊交互组件与微呼吸动效（.mode-toggle）、GET /api/config/status 密钥探测与阻断横幅提示、双形态状态管理与数据源严格隔离、跨形态草稿安全保留与在线会话持久化存储加载；通过全量端到端 HTTP 接口冒烟与 Headless Edge CDP 浏览器自动化全链路测试。
 
 ## 2. 已做决定及理由
 
@@ -63,6 +64,8 @@
 2.33 2026-11-06 会话列表栏支持手动收缩展开与小屏（< 1024px）自适应收缩，并在主侧栏最底部放置展开入口。理由：Fibel 要求；桌面默认不收缩保证多会话可及性，小屏与手动收缩释放视口空间，收缩后将展开按钮收敛至左侧导航最底部保持极简无遮挡。
 2.34 2026-11-06 第二版在线对话 Spec 采纳架构审查结论，实施单一事实来源与防死锁设计。理由：消除多处定义冲突（错误码、文案、事件字段）、防范时间戳同秒乱序与长回复 Pydantic 崩溃，确保分支独立可验收与多会话真正并发解耦。
 2.35 2026-11-06 SQLite 异步持久化采用应用级单一共享长连接（Single Shared `aiosqlite.Connection`）配合 `SessionStore` 内部 `asyncio.Lock` 写锁及 `PRAGMA busy_timeout = 5000`。理由：`aiosqlite` 每个连接对应一个后台线程且无内置连接池，单机应用复用单一连接只需在启动时执行一次 `PRAGMA journal_mode = WAL` 与 `PRAGMA foreign_keys = ON`，写锁在进程内串行化事务可彻底根除多会话节流刷盘时的 `database is locked` 异常，最易维护。
+2.36 2026-11-06 在线会话与离线会话数据源在 store.js 中分别维护在 onlineSessions 与 offlineSessions，切换形态时统一落入空白草稿态（activeSessionId = null）且输入框草稿文字不丢失。理由：严格遵循 Spec B1_1_3 与 B1.7 规定，杜绝双形态会话数据串流混杂，同时保证用户在形态间切换时不丢失打下的半截文字。
+2.37 2026-11-06 密钥缺失拦截采用非侵入顶部横幅（.chat-banner），文案严格绑定 System Error Code Registry（NO_API_KEY）。理由：满足 B1_1_2 与 3.6 单一事实来源规范，阻断进入在线模式的同时避免弹窗打扰用户输入。
 
 ## 3. 踩过的坑
 
@@ -74,10 +77,10 @@
 3.6 2026-11-06 对话页中使用 flex-direction: column 且配有 justify-content: flex-end 和 min-height: 100% 时，会导致内容溢出至负向滚动区从而使鼠标滚轮无法向上滑动查看历史；同时会导致初始空状态被挤压偏移且触发未预期的滚动条；改用全宽滚动容器结合 calc((100% - 860px) / 2) 居中边距与自然流式追加，并在空状态隐藏空列表，彻底解决滚轮滑动与居中问题。
 3.7 2026-11-06 多会话流式响应时，`onMeta` 中优先执行 `updateMessage` 导致 `agentMessage.id` 变更为服务端分配的 `message_id`，而此时 DOM 节点的 `data-message-id` 仍为客户端初始占位 ID，导致选择器返回 null，未能及时同步 DOM 属性；致使后续 `onDelta` 增量无法在当前会话的 DOM 树上命中卡片，造成等待动画无法移除且文字未能实时上屏（切走再切回时由于全量重绘因此能恢复显示）。通过在 `onMeta` 中优先基于 `prevId` 定位并更新 DOM 属性、在 `onDelta` 中双重兼容最新 ID 与初始 ID，并补充 `.msg--assistant` 样式选择器，彻底修复流式实时逐字上屏问题。
 3.8 2026-11-06 通过 document.createElement('svg') 动态创建节点会生成 HTMLUnknownElement 而不是 SVGElement，导致浏览器不解析其命名空间及内部 <use> 引用，使重命名和删除图标完全不渲染（表现为空白/透明）；通过在 dom.js 的 el 工具函数中增加 SVG 标签集判断并使用 document.createElementNS(SVG_NS, tagName) 以及在业务中统一使用 createSvgIcon，彻底修复图标隐形透明问题。
+3.9 2026-11-06 Headless Edge 启动时若未指定 --user-data-dir 与 --disable-extensions，浏览器会自动加载用户宿主环境中的全部插件背景页，导致 CDP /json 接口返回的首个 target 为扩展页面从而引发 evaluate 节点未命中；且 ES Module 异步加载特性使得 DOM 节点先行渲染而脚本逻辑尚未挂载。通过在自动化测试中指定隔离临时用户目录、禁用扩展，并在 main.js 末尾标记 window.__emibot_ready 显式等待挂载完成，彻底解决浏览器端自动化测试的竞态假失败问题。
 
 ## 4. 下一步
 
-4.1 `feature/session-list` 经 Fibel 验收通过后，合并回 `main` 并推送到 `origin`。
-4.2 由 spec 环节依据 Intent.md 中的 B1.0（在线对话：B1.1 ~ B1.9）在 Spec.md 中拆解扩充 B1_x_y 架构与实现方案。
-4.3 从合并后的 `main` 切出 `feature/online-react-agent` 分支推进开发；或先在 `feature/first-release` 分支进行第一版全量回归发布。
-4.4 保持提交后推送当前分支、合并后推送 `main` 的 Git 同步约定。
+4.1 `feature/storage-crud` 经 Fibel 验收通过后，合并回 `main` 并推送到 `origin`。
+4.2 按 Spec.md 功能分支拆分切出 `feature/online-react-agent`（顺序 6）分支推进开发：实现本机模型配置读取、OpenAI 兼容流式客户端（LLMClient）、ReAct 循环引擎、工具注册中心预留、多轮上下文构建与中文错误提示（覆盖 B1.2 ~ B1.6）。
+4.3 保持提交后推送当前分支、合并后推送 `main` 的 Git 同步约定。

@@ -1,28 +1,61 @@
-// 多会话内存状态管理、草稿管理、消息列表与发送队列
+// 双形态（离线/在线）会话状态管理、草稿维护、消息列表与发送队列
 
 let sessionCounter = 0;
 let messageCounter = 0;
 
-function generateSessionId() {
+function generateOfflineSessionId() {
   sessionCounter += 1;
   const rand = Math.random().toString(36).slice(2, 8);
-  return `s_${Date.now().toString(36)}_${rand}_${sessionCounter}`;
+  return `s_off_${Date.now().toString(36)}_${rand}_${sessionCounter}`;
 }
 
-function generateMessageId() {
+function generateOfflineMessageId() {
   messageCounter += 1;
   const rand = Math.random().toString(36).slice(2, 8);
-  return `m_${Date.now().toString(36)}_${rand}_${messageCounter}`;
+  return `m_off_${Date.now().toString(36)}_${rand}_${messageCounter}`;
 }
 
 const state = {
+  mode: 'offline', // 当前工作台形态：'offline' | 'online'
   activeSessionId: null, // 当前活动会话 ID；为 null 时表示处于未创建的空白草稿态
   draftText: '', // 空白草稿态中已输入未发送的文字
-  sessions: [], // 全部已创建会话列表（按时间降序）：{ id, title, createdAt, updatedAt, messages, draft }
-  queue: [], // 全局发送队列：[{ sessionId, messageId, snapshot }]
-  isStreaming: false, // 全局流式互斥锁：是否正在流式生成回复
-  currentAbortController: null, // 当前流式请求的 AbortController 实例
+  offlineSessions: [], // 离线会话列表（纯内存，ID 前缀 s_off_）
+  onlineSessions: [], // 在线会话列表（同步自 SQLite，ID 前缀 s_on_）
+  sessionDrafts: {}, // 各会话未发送草稿字典：{ [sessionId]: text }
+  streamingBySession: {}, // 会话级流状态映射：{ [sessionId]: { abortController, taskId } }
+  queue: [], // 离线形态发送队列：[{ sessionId, messageId, snapshot }]
+  isStreaming: false, // 离线全局流式互斥锁
+  currentAbortController: null, // 当前离线流式请求的 AbortController
 };
+
+export function getMode() {
+  return state.mode;
+}
+
+export function setMode(newMode) {
+  if (newMode !== 'offline' && newMode !== 'online') {
+    throw new Error(`不支持的工作台形态: ${newMode}`);
+  }
+  state.mode = newMode;
+  // 切换形态时统一落入空白草稿态，且保留输入框当前草稿
+  state.activeSessionId = null;
+  return state.mode;
+}
+
+export function getActiveSessionList() {
+  return state.mode === 'online' ? state.onlineSessions : state.offlineSessions;
+}
+
+export function setOnlineSessions(sessions) {
+  state.onlineSessions = sessions.map((s) => ({
+    id: s.id,
+    title: s.title,
+    createdAt: s.created_at ? new Date(s.created_at) : new Date(),
+    updatedAt: s.updated_at ? new Date(s.updated_at) : new Date(),
+    messages: s.messages || [],
+  }));
+  sortSessions();
+}
 
 export function getSessionLatestTime(session) {
   if (session && session.messages && session.messages.length > 0) {
@@ -43,12 +76,13 @@ export function getSessionLatestTime(session) {
 }
 
 export function sortSessions() {
-  state.sessions.sort((a, b) => getSessionLatestTime(b) - getSessionLatestTime(a));
+  const list = getActiveSessionList();
+  list.sort((a, b) => getSessionLatestTime(b) - getSessionLatestTime(a));
 }
 
 export function getSessions() {
   sortSessions();
-  return state.sessions;
+  return getActiveSessionList();
 }
 
 export function getActiveSessionId() {
@@ -59,7 +93,14 @@ export function findSession(sessionId) {
   if (!sessionId) {
     return null;
   }
-  return state.sessions.find((s) => s.id === sessionId) || null;
+  const activeList = getActiveSessionList();
+  const found = activeList.find((s) => s.id === sessionId);
+  if (found) {
+    return found;
+  }
+  // 兜底查另一个列表
+  const otherList = state.mode === 'online' ? state.offlineSessions : state.onlineSessions;
+  return otherList.find((s) => s.id === sessionId) || null;
 }
 
 export function getActiveSession() {
@@ -87,25 +128,68 @@ export function clearDraftText() {
   state.draftText = '';
 }
 
-export function createSessionFromDraft(firstUserContent) {
+export function getSessionDraft(sessionId) {
+  return state.sessionDrafts[sessionId] || '';
+}
+
+export function setSessionDraft(sessionId, text) {
+  if (!sessionId) {
+    state.draftText = text || '';
+  } else {
+    state.sessionDrafts[sessionId] = text || '';
+  }
+}
+
+export function getCurrentDraft() {
+  if (state.activeSessionId === null) {
+    return state.draftText;
+  }
+  return state.sessionDrafts[state.activeSessionId] || '';
+}
+
+export function setCurrentDraft(text) {
+  if (state.activeSessionId === null) {
+    state.draftText = text || '';
+  } else {
+    state.sessionDrafts[state.activeSessionId] = text || '';
+  }
+}
+
+export function createSessionFromDraft(firstUserContent, customSessionId = null) {
   // 1. 空白折叠：将换行符、回车符、连续空格收敛为单空格
   const folded = (firstUserContent || '').trim().replace(/\s+/g, ' ');
   // 2. Unicode 码点感知切片，防止 emoji 等代理对截断
   const title = Array.from(folded).slice(0, 10).join('') || '新会话';
 
+  const isOnline = state.mode === 'online';
+  const sessionId = customSessionId || (isOnline ? `s_on_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}` : generateOfflineSessionId());
+
   const session = {
-    id: generateSessionId(),
+    id: sessionId,
     title,
     createdAt: new Date(),
     updatedAt: new Date(),
     messages: [],
-    draft: '',
   };
 
-  state.sessions.unshift(session);
+  const list = getActiveSessionList();
+  list.unshift(session);
   sortSessions();
   state.activeSessionId = session.id;
   state.draftText = '';
+  return session;
+}
+
+export function addOnlineSessionToStore(sessionData) {
+  const session = {
+    id: sessionData.id,
+    title: sessionData.title,
+    createdAt: sessionData.created_at ? new Date(sessionData.created_at) : new Date(),
+    updatedAt: sessionData.updated_at ? new Date(sessionData.updated_at) : new Date(),
+    messages: sessionData.messages || [],
+  };
+  state.onlineSessions.unshift(session);
+  sortSessions();
   return session;
 }
 
@@ -120,15 +204,37 @@ export function renameSession(sessionId, newTitle) {
 }
 
 export function deleteSession(sessionId) {
-  const index = state.sessions.findIndex((s) => s.id === sessionId);
+  const list = getActiveSessionList();
+  const index = list.findIndex((s) => s.id === sessionId);
   if (index === -1) {
     return null;
   }
-  const [deleted] = state.sessions.splice(index, 1);
+  const [deleted] = list.splice(index, 1);
+  delete state.sessionDrafts[sessionId];
   if (state.activeSessionId === sessionId) {
     state.activeSessionId = null;
   }
   return deleted;
+}
+
+export function setSessionMessages(sessionId, messages) {
+  const session = findSession(sessionId);
+  if (!session) {
+    return null;
+  }
+  session.messages = messages.map((m) => ({
+    seq: m.seq,
+    id: m.id,
+    role: m.role,
+    content: m.content || '',
+    status: m.status || 'done',
+    errorCode: m.error_code || null,
+    errorMessage: m.error_message || null,
+    createdAt: m.created_at ? new Date(m.created_at) : new Date(),
+  }));
+  session.updatedAt = new Date();
+  sortSessions();
+  return session.messages;
 }
 
 export function getActiveMessages() {
@@ -145,7 +251,8 @@ export function findMessageInSession(sessionId, messageId) {
 }
 
 export function findMessage(messageId) {
-  for (const session of state.sessions) {
+  const allSessions = [...state.offlineSessions, ...state.onlineSessions];
+  for (const session of allSessions) {
     const msg = session.messages.find((m) => m.id === messageId);
     if (msg) {
       return { message: msg, session };
@@ -154,7 +261,7 @@ export function findMessage(messageId) {
   return null;
 }
 
-export function addUserMessage(content, targetSessionId = null) {
+export function addUserMessage(content, targetSessionId = null, customId = null) {
   const sessionId = targetSessionId || state.activeSessionId;
   const session = findSession(sessionId);
   if (!session) {
@@ -162,11 +269,13 @@ export function addUserMessage(content, targetSessionId = null) {
   }
 
   const message = {
-    id: generateMessageId(),
+    id: customId || (state.mode === 'online' ? `m_u_${Math.random().toString(36).slice(2, 8)}` : generateOfflineMessageId()),
     role: 'user',
     content,
     createdAt: new Date(),
     status: 'done',
+    errorCode: null,
+    errorMessage: null,
   };
 
   session.messages.push(message);
@@ -183,11 +292,13 @@ export function addAgentPlaceholder(customId = null, targetSessionId = null) {
   }
 
   const message = {
-    id: customId || generateMessageId(),
+    id: customId || (state.mode === 'online' ? `m_a_${Math.random().toString(36).slice(2, 8)}` : generateOfflineMessageId()),
     role: 'assistant',
     content: '',
     createdAt: new Date(),
     status: 'streaming',
+    errorCode: null,
+    errorMessage: null,
   };
 
   session.messages.push(message);

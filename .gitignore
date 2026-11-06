@@ -15,6 +15,11 @@ dist/
 .env.*
 !.env.example
 
+# 本地数据与持久化
+data/
+*.db
+*.sqlite3
+
 # 临时规格文件
 spec_temp.md
 

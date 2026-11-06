@@ -75,8 +75,13 @@
     <span class="app-header__divider" aria-hidden="true"></span>
     <h1 class="app-header__title" id="page-title">对话</h1>
     <div class="app-header__spacer"></div>
-    <span class="badge badge--mock"><span class="badge__dot"></span>Mock 模式</span>
-    <span class="app-header__version">v0.1.0</span>
+    <button class="mode-toggle" id="mode-toggle" type="button" aria-label="切换工作台形态">
+      <span class="mode-toggle__pill">
+        <span class="mode-toggle__dot"></span>
+        <span class="mode-toggle__label" id="mode-label">离线模式</span>
+      </span>
+    </button>
+    <span class="app-header__version">v0.2.0</span>
   </header>
 
   <div class="app-body">
@@ -86,7 +91,7 @@
       </nav>
       <div class="app-sidebar__footer">
         <span class="status-dot" aria-hidden="true"></span>
-        <span class="app-sidebar__footer-text">本地运行 · v0.1.0</span>
+        <span class="app-sidebar__footer-text">本地运行 · v0.2.0</span>
       </div>
       <button class="app-sidebar__expand-btn" id="expand-sessions-btn" type="button" title="展开会话列表" aria-label="展开会话列表" hidden>
         <svg class="app-sidebar__expand-icon" viewBox="0 0 24 24"><use href="#icon-chevron-right"></use></svg>
@@ -113,13 +118,17 @@
           </div>
         </aside>
         <div class="chat" id="chat-main">
+          <div class="chat-banner" id="chat-banner" role="alert" hidden>
+            <span class="chat-banner__text" id="chat-banner-text"></span>
+            <button class="chat-banner__close" id="chat-banner-close" type="button" aria-label="关闭提示">×</button>
+          </div>
           <div class="chat__scroll" id="chat-scroll">
             <div class="chat__empty" id="chat-empty">
               <span class="chat__empty-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><use href="#icon-chat"></use></svg>
               </span>
-              <h2 class="chat__empty-title">开始和 Agent 对话</h2>
-              <p class="chat__empty-text">当前回复由本地 mock 生成，用来验证对话界面与流式输出。</p>
+              <h2 class="chat__empty-title" id="chat-empty-title">开始和 Agent 对话</h2>
+              <p class="chat__empty-text" id="chat-empty-text">当前回复由本地 mock 生成，用来验证对话界面与流式输出。</p>
             </div>
             <div class="chat__messages" id="messages"></div>
           </div>

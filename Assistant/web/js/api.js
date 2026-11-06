@@ -1,4 +1,66 @@
-// 聊天接口 Server-Sent Events (SSE) 客户端
+// 聊天接口 Server-Sent Events (SSE) 客户端与在线会话 RESTful API 客户端
+
+export async function checkConfigStatus() {
+  const response = await fetch('/api/config/status');
+  if (!response.ok) {
+    throw new Error(`探测配置状态失败: HTTP ${response.status}`);
+  }
+  return await response.json();
+}
+
+export async function fetchOnlineSessions() {
+  const response = await fetch('/api/sessions');
+  if (!response.ok) {
+    throw new Error(`获取在线会话失败: HTTP ${response.status}`);
+  }
+  return await response.json();
+}
+
+export async function createOnlineSession({ id, title }) {
+  const response = await fetch('/api/sessions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ id, title }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || `创建在线会话失败: HTTP ${response.status}`);
+  }
+  return await response.json();
+}
+
+export async function renameOnlineSession(sessionId, title) {
+  const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ title }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || `重命名会话失败: HTTP ${response.status}`);
+  }
+  return await response.json();
+}
+
+export async function deleteOnlineSession(sessionId) {
+  const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+  });
+  return response.ok;
+}
+
+export async function fetchOnlineMessages(sessionId) {
+  const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages`);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || `获取会话消息失败: HTTP ${response.status}`);
+  }
+  return await response.json();
+}
 
 export async function streamChat({
   messages,
@@ -139,7 +201,6 @@ function parseAndDispatchEvent(chunk, { onMeta, onDelta, onDone, onError }) {
       onError?.(payload);
       break;
     default:
-      // 未知事件类型默认尝试按 delta 处理
       if (payload.text !== undefined) {
         onDelta?.(payload);
       }
