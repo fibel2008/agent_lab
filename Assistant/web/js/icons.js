@@ -8,4 +8,9 @@ export const ICONS = Object.freeze({
   DEVICE: 'icon-device',
   SETTINGS: 'icon-settings',
   SEND: 'icon-send',
+  PLUS: 'icon-plus',
+  PENCIL: 'icon-pencil',
+  TRASH: 'icon-trash',
+  CHEVRON_LEFT: 'icon-chevron-left',
+  CHEVRON_RIGHT: 'icon-chevron-right',
 });

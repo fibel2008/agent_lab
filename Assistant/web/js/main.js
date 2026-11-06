@@ -3,7 +3,7 @@
 import { createSvgIcon } from './dom.js';
 import { initRouter } from './router.js';
 import { ROUTES } from './routes.js';
-import { initChatView } from './views/chat.js';
+import { initChatView, onChatViewActivated, onChatViewDeactivated } from './views/chat.js';
 import { renderPlaceholder } from './views/placeholder.js';
 
 function buildNavList(navListEl) {
@@ -38,6 +38,7 @@ function bootstrap() {
   const pageTitleEl = document.getElementById('page-title');
   const viewChatEl = document.getElementById('view-chat');
   const viewPlaceholderEl = document.getElementById('view-placeholder');
+  const appSidebarEl = document.querySelector('.app-sidebar');
 
   buildNavList(navListEl);
   initChatView();
@@ -47,9 +48,19 @@ function bootstrap() {
     pageTitleEl,
     viewChatEl,
     viewPlaceholderEl,
+    appSidebarEl,
     onRouteRender(route) {
-      if (route.view === 'placeholder') {
-        renderPlaceholder(viewPlaceholderEl, route);
+      if (route.view === 'chat') {
+        if (typeof onChatViewActivated === 'function') {
+          onChatViewActivated();
+        }
+      } else {
+        if (typeof onChatViewDeactivated === 'function') {
+          onChatViewDeactivated();
+        }
+        if (route.view === 'placeholder') {
+          renderPlaceholder(viewPlaceholderEl, route);
+        }
       }
     },
   });

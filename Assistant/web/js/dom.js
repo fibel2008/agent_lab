@@ -1,9 +1,13 @@
 // DOM 工具函数与时间戳格式化辅助
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const SVG_TAGS = new Set(['svg', 'use', 'path', 'line', 'polyline', 'polygon', 'circle', 'ellipse', 'rect', 'g']);
 
 export function el(tagName, options = {}, children = []) {
-  const element = document.createElement(tagName);
+  const isSvg = SVG_TAGS.has(tagName.toLowerCase());
+  const element = isSvg
+    ? document.createElementNS(SVG_NS, tagName)
+    : document.createElement(tagName);
   if (options.className) {
     element.className = options.className;
   }

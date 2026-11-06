@@ -1,138 +1,286 @@
 # Spec：Emibot
 
-<!-- 文档职责：回答"具体怎么实现"。
-     只保留四部分：目录结构、架构、接口与数据规定、需求列表。
-     不写项目背景与目标（属于 Intent.md），不写开发过程日志（属于 Memory.md）。
+<!-- 文档职责：回答"具体怎么实现"。只保留四部分：目录结构、架构、接口与数据规定、需求列表。不写项目背景与目标（属于 Intent.md），不写开发过程日志（属于 Memory.md）。
 
-     编号规则：对应 Intent.md 中的单条需求 A{x}.{y}，本文拆解为若干实现子项 Ax_y_z（x 为子板块号，y 为需求号，z 为从 1 递增的实现部分序号）。
-     编号一经分配不得更改或复用；条目废弃时保留原编号，并标注"已废弃"。
-     每个 Ax_y_z 条目固定包含三项：状态、需求描述、详细方案设计。
-
-     状态取值：已确认（方案已定，待实现）/ 进行中（正在实现，未验收）/
-     已完成（已实现并通过验收）/ 待确认（方案待拍板）/ 已废弃。 -->
+```
+ 编号规则：对应 Intent.md 中的单条需求 A{x}.{y} 或 B{x}.{y}，本文拆解为若干实现子项 Ax_y_z 或 Bx_y_z（x 为子板块号，y 为需求号，z 为从 1 递增的实现部分序号）。  
+ 编号一经分配不得更改或复用；条目废弃时保留原编号，并标注"已废弃"。  
+ 每个 Ax_y_z / Bx_y_z 条目固定包含三项：状态、需求描述、详细方案设计。  
+ 阅读时默认只读本文档内容，不读取已归档内容。只有在和先前功能有关联的时候才需要读取。  
+  
+  
+ 状态取值：已确认（方案已定，待实现）/ 进行中（正在实现，未验收）/  
+ 已完成（已实现并通过验收）/ 待确认（方案待拍板）/ 已废弃。  
+  
+ 归档规则：  
+ 1. 触发条件：当且仅当用户明确表达"归档"等意思后才进行归档；用户输入"开始下一阶段"时不进行归档；无需再次确认。  
+ 2. 归档文件：将当前母文档复制到 Archive/ 目录，重命名为 {M}_{N}_spec.md（M 为当前阶段如 vA、vB，N 为该阶段备份序号，从 0 开始递增）。Archive/ 文件夹及备份文件已配置 .gitignore 忽略。  
+ 3. 范围边界：仅归档当前阶段实现规格，后续阶段预研/未开发规格不计入当前阶段归档并保留在母文档中。  
+ 4. 清空与提交：归档完成后，清空母文档中已归档阶段的需求列表板块，保留系统架构、接口规定与后续阶段规格；执行原子 commit，备注格式统一为 docs(archive): {M}_{N}整理归档intent,spec。 -->
+```
 
 ## 一、目录结构
 
 ```
-Lab1/
-├── Assistant/
-│   ├── __init__.py              包标记
-│   ├── __main__.py              启动入口：python -m Assistant
-│   ├── app.py                   FastAPI 装配：路由、静态托管、缓存策略
-│   ├── config.py                常量、环境变量与日志初始化
-│   ├── api/
-│   │   ├── __init__.py
-│   │   ├── health.py            GET /api/health
-│   │   ├── chat.py              POST /api/chat（SSE）
-│   │   └── schemas.py           请求与事件的数据模型
-│   ├── agent/
-│   │   ├── __init__.py
-│   │   ├── base.py              ChatMessage 与 Agent 协议
-│   │   ├── mock_agent.py        mock 回复的唯一生成位置
-│   │   └── factory.py           唯一替换点：选哪个 Agent
-│   └── web/
-│       ├── index.html           应用外壳 + 内联 SVG 图标库（含品牌、导航、发送、新建、编辑、删除）
-│       ├── css/
-│       │   ├── tokens.css       设计令牌（颜色、圆角、间距、字号、布局）
-│       │   ├── base.css         reset、排版、滚动条、可访问性基础
-│       │   ├── layout.css       顶栏、主侧栏（含缩略态）、内容区、响应式断点
-│       │   ├── components.css   导航项、徽标、状态圆点、按钮、占位页
-│       │   └── chat.css         对话页双列布局、会话列表侧栏、空状态、消息气泡、输入区
-│       └── js/
-│           ├── main.js          启动入口：构建导航、初始化路由、装配视图
-│           ├── routes.js        路由与导航的唯一配置源
-│           ├── icons.js         SVG symbol 的 id 常量
-│           ├── router.js        hash 路由解析、主侧栏折叠切换与视图显隐
-│           ├── store.js         多会话状态、草稿管理、消息列表与发送队列
-│           ├── api.js           SSE 客户端
-│           ├── dom.js           DOM 工具与时间戳格式化函数
-│           └── views/
-│               ├── chat.js      对话工作区与会话列表视图控制器
-│               └── placeholder.js 占位页视图
-├── requirements.txt
-├── start.bat                    一键启动脚本：启动服务并自动弹出默认浏览器
-├── .gitignore
-├── Intent.md
-├── Spec.md
-├── Memory.md
+Lab1/  
+├── Assistant/  
+│   ├── __init__.py              包标记  
+│   ├── __main__.py              启动入口：python -m Assistant  
+│   ├── app.py                   FastAPI 装配：路由、静态托管、缓存策略、生命周期管理  
+│   ├── config.py                常量、环境变量与日志初始化（系统唯一配置读取点）  
+│   ├── storage/                 [第二版新增] 本地异步持久化层  
+│   │   ├── __init__.py  
+│   │   ├── db.py                SQLite 异步连接管理、WAL 模式配置、Per-Connection 外键开启与建表迁移  
+│   │   └── session_store.py     会话与消息异步 CRUD 仓储实现、节流刷盘、未完任务状态补偿  
+│   ├── api/  
+│   │   ├── __init__.py  
+│   │   ├── health.py            GET /api/health  
+│   │   ├── config_status.py     [第二版新增] GET /api/config/status（探测密钥配置状态，不泄露内容）  
+│   │   ├── sessions.py          [第二版新增] RESTful 会话 CRUD 与在线消息触发接口  
+│   │   ├── chat.py              POST /api/chat（离线 SSE）与 POST /api/chat/abort（任务中断）  
+│   │   ├── stream.py            [第二版新增] GET /api/chat/stream（会话级解耦 SSE 实时增量订阅）  
+│   │   └── schemas.py           请求、响应、任务与事件的 Pydantic 数据模型  
+│   ├── agent/  
+│   │   ├── __init__.py  
+│   │   ├── base.py              ChatMessage 与 Agent 协议  
+│   │   ├── mock_agent.py        mock 回复的唯一生成位置  
+│   │   ├── llm_client.py        [第二版新增] OpenAI 兼容协议异步流式 HTTP 客户端（基于 httpx）  
+│   │   ├── online_agent.py      [第二版新增] 真实大模型在线 Agent 外观实现  
+│   │   ├── react.py             [第二版新增] ReAct 循环执行引擎（推理-行动-观察循环）  
+│   │   ├── tools/               [第二版新增] 工具与技能预留抽象层  
+│   │   │   ├── __init__.py  
+│   │   │   ├── base.py          BaseTool 协议与 ToolCall 模型  
+│   │   │   └── registry.py      统一工具注册中心（本阶段为空）  
+│   │   ├── task_manager.py      [第二版新增] 后台解耦生成任务管理器（支持多会话并发与广播）  
+│   │   └── factory.py           唯一替换点：选哪个 Agent  
+│   └── web/  
+│       ├── index.html           应用外壳 + 内联 SVG 图标库（顶栏新增交互式形态切换器）  
+│       ├── css/  
+│       │   ├── tokens.css       设计令牌（颜色、圆角、间距、字号、布局、形态与中断状态）  
+│       │   ├── base.css         reset、排版、滚动条、可访问性基础  
+│       │   ├── layout.css       顶栏、主侧栏（含缩略态）、内容区、响应式断点  
+│       │   ├── components.css   导航项、徽标、状态圆点、按钮、形态开关胶囊、占位页  
+│       │   └── chat.css         对话页双列布局、会话列表侧栏、空状态、消息气泡、中断样式、输入区  
+│       └── js/  
+│           ├── main.js          启动入口：构建导航、初始化路由、装配视图  
+│           ├── routes.js        路由与导航的唯一配置源  
+│           ├── icons.js         SVG symbol 的 id 常量  
+│           ├── router.js        hash 路由解析、主侧栏折叠切换与视图显隐  
+│           ├── store.js         双形态状态管理：离线纯内存数据源与在线持久化数据源、会话级流状态映射  
+│           ├── api.js           RESTful API 客户端与会话级 SSE 订阅客户端  
+│           ├── dom.js           DOM 工具与时间戳格式化函数  
+│           └── views/  
+│               ├── chat.js      对话工作区与会话列表视图控制器（形态切换、解耦流式订阅与重连）  
+│               └── placeholder.js 占位页视图  
+├── data/                        [第二版新增] 本地持久化数据目录（受 .gitignore 忽略）  
+│   └── emibot.db                本地 SQLite 数据库文件  
+├── Archive/                     [阶段归档] 历史阶段规格与需求归档目录（受 .gitignore 忽略）  
+│   ├── vA_0_intent.md  
+│   └── vA_0_spec.md  
+├── requirements.txt  
+├── start.bat                    一键启动脚本：启动服务并自动弹出默认浏览器  
+├── .gitignore  
+├── Intent.md  
+├── Spec.md  
+├── Memory.md  
 └── README.md
 ```
 
 - 目录名 `Assistant` 首字母大写沿用既有约定，作为顶层 Python 包通过 `python -m Assistant` 启动。
-- 第一版不建立 `tests/`、`scripts/`、`docs/` 目录。
+- 第二版新增 `data/` 本地持久化数据目录，由 `Assistant/storage/db.py` 在运行时自动创建，数据库文件已配置 `.gitignore` 忽略。
+- 配置状态路由独立命名为 `Assistant/api/config_status.py`，避免与全局配置 `Assistant/config.py` 同名冲突。
+- 模型流式通信独立抽取为 `Assistant/agent/llm_client.py`，供 `ReActLoop` 依赖调用，彻底解耦 `OnlineAgent` 与 ReAct 循环依赖。
 
 ---
 
 ## 二、架构
 
-### 2.1 组件关系
+### 2.1 组件关系图
 
 ```
-浏览器
-├── index.html / CSS / ES Modules
-│   ├── main.js ── routes.js ── router.js
-│   ├── views/chat.js（对话工作区 + 会话列表栏）── store.js ── api.js
-│   └── views/placeholder.js
-└── fetch POST /api/chat（SSE）
-        │
-FastAPI（Assistant/app.py）
-├── /api/health ── config
-├── /api/chat ── agent/factory.py ── agent/mock_agent.py
-└── StaticFiles("/", web/, html=True)
+浏览器端（原生 ES Modules）  
+├── 顶栏形态切换器（离线 ⇄ 在线）  
+├── 对话工作区（views/chat.js）  
+│   ├── 离线数据流：内存 store.js ── POST /api/chat（直连 MockAgent 同步 SSE 直出）  
+│   └── 在线数据流：  
+│       ├── 会话管理：RESTful API（GET/POST/PATCH/DELETE /api/sessions）── SQLite 持久化  
+│       ├── 触发生成：POST /api/sessions/{session_id}/messages ── 202 异步任务  
+│       ├── 解耦订阅：GET /api/chat/stream?session_id={id} ── 接收 SSE delta 增量  
+│       └── 任务中断：POST /api/chat/abort ── 中断指定会话正在进行的任务  
+FastAPI 服务端（Assistant/app.py）  
+├── 静态托管与配置检查：/api/config/status（安全探测密钥配置状态）  
+├── 异步持久化仓储层（storage/，基于 aiosqlite）：  
+│   ├── SQLite（WAL 模式 + Per-Connection 外键开启）── sessions 表、messages 表、generation_tasks 表  
+│   └── 增量节流写盘（流式缓冲定时刷盘，done/interrupted 强制 flush）  
+├── 后台任务管理器（agent/task_manager.py）：  
+│   ├── 并发任务调度池（多会话独立 asyncio.Task，互不阻塞，单会话严格串行）  
+│   ├── 增量缓冲区与广播分发队列（动态挂载/卸载前端 SSE 订阅者，支持断线重连追赶）  
+│   └── 进程异常恢复补偿（启动扫描中断状态）  
+└── 智能体执行层（agent/）：  
+    ├── 离线形态：MockAgent（纯文本关键词流式直出）  
+    └── 在线形态：OnlineAgent ── ReActLoop ── LLMClient（OpenAI 兼容协议流式）  
+                                        └── ToolRegistry（统一工具注册中心，第二版为空）
 ```
 
 ### 2.2 前端模块职责与依赖方向
 
-| 文件 | 职责 | 允许依赖 |
-|---|---|---|
-| `main.js` | 入口：构建导航、初始化路由、注册全局事件 | 其余全部前端模块 |
-| `routes.js` | 路由、导航标签、图标、页面标题、占位页文案的唯一配置源 | `icons.js` |
-| `router.js` | 解析 hash、主侧栏折叠切换、切换视图、更新导航高亮与 `document.title` | `routes.js` |
-| `store.js` | 多会话管理、当前活动会话与草稿文字维护、消息列表、发送队列、流状态、ID 与时间戳生成 | `dom.js` |
-| `api.js` | 组装请求、解析 SSE、回调 `meta` / `delta` / `done` / `error` | 无 |
-| `dom.js` | `el()`、`createSvgIcon()`、`formatTimestamp()`、`scrollToBottom()`、`isNearBottom()` | 无 |
-| `views/chat.js` | 对话页 DOM、会话列表渲染、新建/重命名/删除会话、输入保留与丢弃、队列驱动、滚动控制 | `store.js`、`api.js`、`dom.js` |
-| `views/placeholder.js` | 占位页渲染 | `routes.js`、`dom.js` |
-| `icons.js` | SVG symbol id 常量 | 无 |
+
+| 文件                 | 职责                                                                                                                                                               | 允许依赖                     |
+|------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------|
+| `main.js`              | 入口：构建导航、初始化路由、注册全局事件、装配双形态                                                                                       | 其余全部前端模块         |
+| `routes.js`            | 路由、导航标签、图标、页面标题、占位页文案的唯一配置源                                                                                    | `icons.js`                       |
+| `router.js`            | 解析 hash、主侧栏折叠切换、切换视图、更新导航高亮与 `document.title`                                                                          | `routes.js`                      |
+| `store.js`             | 双形态状态管理：离线纯内存数据源与在线持久化数据源、草稿维护、当前活动会话与会话级流状态映射（`streamingBySession`） | `dom.js`                         |
+| `api.js`               | RESTful API 客户端（会话与消息 CRUD、状态检查、中断请求）与会话级解耦 SSE 订阅客户端                                                  | 无                              |
+| `dom.js`               | `el()`、`createSvgIcon()`、`formatTimestamp()`、`scrollToBottom()`、`isNearBottom()`                                                                             | 无                              |
+| `views/chat.js`        | 对话页 DOM、会话列表渲染、新建/重命名/删除会话、形态切换响应、解耦流式订阅与重连、异常气泡渲染                           | `store.js`、`api.js`、`dom.js` |
+| `views/placeholder.js` | 占位页渲染                                                                                                                                                      | `routes.js`、`dom.js`           |
+| `icons.js`             | SVG symbol id 常量                                                                                                                                                 | 无                              |
+
 
 - 依赖方向严格自上而下，禁止视图模块之间互相 `import`，禁止 `api.js` 操作 DOM。
 
 ### 2.3 对话全链路时序与状态归属
 
-1. 浏览器加载 `/`，`main.js` 根据 `routes.js` 生成侧栏导航，`router.js` 解析 hash；无 hash 或非法 hash 时替换为 `#/chat`。
+1. 浏览器加载 `/`，`main.js` 根据 `routes.js` 生成侧栏导航，`router.js` 解析 hash；无 hash 或非法 hash 时替换为 `#/chat`。每次启动或刷新页面，工作台默认进入**离线形态**。
 2. 路由进入对话页（`#/chat`）时，左侧主导航自动收缩为仅显示图标的缩略态，紧邻展开会话列表栏；首次加载默认处于未创建的空白草稿态（`activeSessionId = null`），输入框可用，消息区显示空状态。
-3. 草稿状态统一实时写入：监听输入框的 `input` 事件，每次键入实时将最新内容写入当前活动目标：
-   - 若处于空白草稿态（`activeSessionId === null`），实时写入 `store.draftText`；
-   - 若处于既有会话（`activeSessionId !== null`），实时写入对应会话的 `session.draft`；
-   - 切换会话或切离对话页时无需依赖离场钩子，切回时直接从目标对象读取回填并联动自适应高度与发送按钮状态。
-4. 用户发送消息与全局排队流转：
-   - 若在草稿态发送首条消息：自动按 `Array.from(trimmed.replace(/\s+/g, ' ')).slice(0, 10).join('')` 截取生成标题并创建新会话，设为 `activeSessionId` 并加入会话列表头部；
-   - 用户消息与时间戳立即上屏，输入框清空并聚焦；对应会话内存追加状态为 `streaming` 的 Agent 占位消息（界面显示三点等待动画）；
-   - 请求快照（含 `sessionId`、`messageId` 与历史切片）推入全局 FIFO 发送队列 `store.queue`；
-   - 全局调度并发策略：采用串行单流调度（`isStreaming` 为全局锁），若当前已有流在进行，新发送的消息在列表中正常上屏展示等待态，并在输入区显示排队提示，等待上一请求完成后自动调度出队执行。
-5. SSE 流式响应与重绘节点动态绑定：
-   - 后端通过 `POST /api/chat` 下发 `text/event-stream`；
-   - 前端接收增量 `delta` 时，首先无条件追加至内存中对应会话消息对象的 `content`；
-   - DOM 更新通过 `document.querySelector(`[data-message-id="${messageId}"]`)` 动态定位 Agent 卡片节点并写入文本（使用 `textContent`）；
-   - 切走再切回场景：若用户在流式期间切换到其他会话后再切回，视图执行全量重绘时将渲染持有相同 `data-message-id` 的最新卡片节点，后续到达的 `delta` 依然能通过选择器无缝接管并继续追加文字与滚动，彻底避免闭包 DOM 节点失效问题；若当前未停留在该会话，则静默更新内存，不触碰当前视口 DOM。
-6. 流式中断与删除保护：
-   - 每次发起流式请求时在全局保存 `currentAbortController`；
-   - 若流式进行中用户删除了当前正在输出的会话：前端立即调用 `abortController.abort()` 中止连接，将全局 `isStreaming` 重置为 `false`，清理队列中属于该会话的所有排队项，并调用 `syncSendButtonState()` 恢复发送按钮，防止状态死锁，然后调度队列中下一条请求。
-7. 会话交互与重命名安全流转：
-   - 点击"新建对话"：从既有会话点击时进入草稿态并恢复此前暂存的 `store.draftText`（若有）；只有当前本来就在草稿态时再次点击"新建对话"，才彻底清空丢弃 `store.draftText` 与输入框文字。
-   - 切换会话：直接从目标会话对象恢复其 `draft` 文字，并调用 `renderActiveSession()` 重绘消息区。
-   - 重命名防护：操作按钮与输入框绑定 `stopPropagation`；维护 `isCommitted` 标记位杜绝 Esc/Enter 后失焦触发重复保存；中文输入法组合（`isComposing`）期间 Enter 不误触保存；编辑期间局部锁定会话列表禁止全量重绘破坏输入框；标题渲染强制使用 `textContent` 防御 XSS。
-8. 状态归属：会话、草稿、消息、队列、流状态仅保存在浏览器内存（`store.js`），刷新页面即清空；后端无状态；对话页 `#view-chat` DOM 常驻，切换路由仅通过 `hidden` 属性显隐。
+3. 草稿状态统一实时写入：监听输入框的 `input` 事件，每次键入实时将最新内容写入当前活动目标：4. 若处于空白草稿态（`activeSessionId === null`），实时写入 `store.draftText`；
+5. 若处于既有会话（`activeSessionId !== null`），实时写入对应会话的 `store.sessionDrafts[activeSessionId]`；
+6. 切换会话或切离对话页时无需依赖离场钩子，切回时直接从目标对象读取回填并联动自适应高度与发送按钮状态。
+7. 在线形态消息发送与解耦流转：
+8. 草稿态发出首条消息：自动按 `Array.from(trimmed.replace(/\s+/g, ' ')).slice(0, 10).join('')` 截取生成标题并通过 `POST /api/sessions` 创建新会话落盘；
+9. 用户消息与时间戳立即上屏，输入框清空并聚焦；
+10. 前端调用 `POST /api/sessions/{session_id}/messages` 触发服务端异步生成；服务端将用户消息与助手初始占位写入 SQLite，更新会话 `updated_at`，在后台启动独立的 `asyncio.Task` 开始 ReAct 循环推理，返回 202 Accepted 及任务信息；
+11. 前端登记该会话的流式状态（写入 `store.streamingBySession[sessionId]`）并立即建立 `GET /api/chat/stream?session_id={id}` 的 SSE 增量订阅连接；
+12. 切走与切回：用户切到其他会话或页面时，前端主动关闭该会话的 SSE 订阅连接（仅断开 `GET /api/chat/stream`，不调用 `/api/chat/abort`）并清除 `store.streamingBySession[sessionId]`，服务端的后台生成协程不受任何影响继续全速运行；切回或刷新后，前端拉取最新消息列表，若最新一条助手消息 `status === 'streaming'`，则重新在 `store.streamingBySession[sessionId]` 登记 `AbortController`、先清空气泡既有文本缓存，并重新连入 SSE，服务端先推送增量缓冲区文本进行追赶，随后继续实时广播增量。
+13. 离线形态消息发送与串行流式：
+14. 沿用第一版纯内存管理与 `MockAgent` 确定性流式生成，通过 `POST /api/chat` 直连同步 SSE 输出，不读写本地数据库，数据在刷新页面后清空。
+15. 状态归属：
+16. 离线形态数据只保存在浏览器内存（`store.js`）；
+17. 在线形态的会话、消息与任务状态保存在服务端 SQLite 数据库中，关闭浏览器、重启服务后不丢失；
+18. 未发送的输入文字（草稿）仅保存在浏览器运行时内存中，刷新后重置。
 
-### 2.4 功能分支拆分
 
-| 顺序 | 分支 | 实现范围 | 对应 Intent 需求 |
-|---|---|---|---|
-| 1 | `feature/app-shell` | Python 服务骨架、配置、健康检查、静态托管；前端外壳、设计令牌、侧栏导航、顶栏、四个占位页、hash 路由；对话页空状态占位 | A1.1 ~ A1.9 |
-| 2 | `feature/mock-agent` | Agent 协议、mock 生成器、工厂、`POST /api/chat` SSE 接口与流式异常处理 | A3.1 ~ A3.3 |
-| 3 | `feature/chat-window` | 对话页完整实现：消息列表、气泡、时间戳、输入区、发送队列、SSE 客户端接入、逐字渲染、自动滚动 | A2.1 ~ A2.7、A2.9、A4.1 |
-| 4 | `feature/session-list` | 会话列表与导航折叠：多会话模型、延迟创建、导航缩略、会话列表栏、新建/改名/删除、草稿保留与丢弃 | A6.1 ~ A6.11 |
-| 5 | `feature/first-release` | 流式失败与网络错误提示、响应式与可访问性收尾、文档同步与第一版全量回归验收 | A1.1 ~ A6.11 |
+### 2.4 双形态切换与隔离架构
+
+1. **形态定位与默认值**：2. 工作台具备两套完全解耦的数据流与执行模式：离线形态（`mode = "offline"`）与在线形态（`mode = "online"`）。
+3. 每次后端服务启动或前端网页重新打开，均默认进入**离线形态**，确保无网络与未配置密钥时的即开即用体验。
+4. **切换阻断保护**：
+5. 用户点击顶栏切换控件请求切入在线形态时，前端首先异步调用 `GET /api/config/status`。
+6. 若返回 `has_api_key: false`，立即阻断切换流程，通过对话区顶部弱侵入提示横幅明确提示（文案引用 3.6 节 `NO_API_KEY` 映射：“未检测到模型密钥，请在本地环境变量配置并重启服务后重试。”），工作台保持在离线形态。
+7. **状态隔离与草稿流转**：
+8. 离线形态的数据完全保留在前端 `store.js` 内存对象中（`state.offlineSessions`），切到在线形态时离线数据不销毁，切回时依然完好（直到页面刷新按 A6.1 清空）；
+9. 在线形态的数据均通过接口从后端 SQLite 数据库实时拉取；
+10. 无论从离线切到在线，还是从在线切到离线，消息区均自动落入当前形态下的**空白草稿态**（`activeSessionId = null`），杜绝跨形态会话混乱；
+11. 未发送的输入文字按 A6.9 与 A6.10 规则保留在前端内存，切换形态时不随之清空，方便用户在两端直接输入。
+12. **生成中切换安全处理**：
+13. 若在回复生成期间用户主动切换形态：14. 若当前处于在线生成：前端向后端发送 `POST /api/chat/abort`（携带当前会话 `session_id`），后台生成协程中止执行，已生成的文本切片存入数据库并标记状态为 `"interrupted"`；
+15. 若当前处于离线生成：前端直接调用当前请求的 `abortController.abort()` 丢弃本次回复，不保存任何片段；
+16. 切换后目标形态的输入区立即可用。
+
+
+### 2.5 生成与页面解耦架构（后台任务 + 广播式 SSE）
+
+```
+【客户端】                                           【服务端 TaskManager】                【大模型 / 存储】  
+│                                                        │                                    │  
+│ 1. 发送消息 POST /api/sessions/X/messages              │                                    │  
+│    { content } ───────────────────────────────────────>│ 2. 写入用户消息与占位助手至 SQLite  │  
+│                                                        │ 3. 启动后台异步任务 asyncio.Task   │  
+│                                                        │    注册该会话任务并绑定 TaskManager │  
+│<── 返回 task_id / 202 Accepted ────────────────────────│                                    │  
+│                                                        │ 4. 驱动 ReAct 循环流式生成        │────> 调用 LLM  
+│ 5. 建立解耦订阅 GET /api/chat/stream?session_id=X ───────>│                                    │<──── 接收 chunk  
+│                                                        │ 6. 缓冲区追赶 + 实时广播 delta 事件│  
+│<── SSE delta 事件逐块推送 ──────────────────────────────│ 7. 节流批量更新数据库增量文本     │────> UPDATE DB  
+│                                                        │                                    │  
+├─── [用户切至会话 Y 或刷新页面]                          │                                    │  
+│ 8. 断开与会话 X 的 SSE 客户端连接                       │ 9. 后台任务不受影响，继续执行生成  │────> 调用 LLM  
+│                                                        │ 10. 生成完毕，标记 status='done'   │────> UPDATE DB  
+│                                                        │                                    │  
+├─── [用户切回会话 X]                                    │                                    │  
+│ 11. 拉取历史 GET /api/sessions/X/messages ─────────────>│ 从 SQLite 返回当前全部历史        │  
+│<── 渲染消息列表 ───────────────────────────────────────│                                    │  
+│ (若最新消息 status 为 streaming，重新连入 SSE 继续接收增量) │                                    │
+```
+
+1. **服务端任务常驻**：2. 在线形态下的回复生成逻辑完全脱离单个 HTTP 请求生命周期，由服务端的 `TaskManager` 管理的独立 `asyncio.Task` 承载。
+3. 单一会话严格保证串行顺序执行（若同一会话已有生成任务在运行，再次提交返回 409 Conflict），不同会话之间并发独立执行，各会话的生成任务互不阻塞。
+4. **广播与重连追赶**：
+5. `TaskManager` 为每个活跃的生成任务维护一个最近生成的文本增量队列（Chunk Buffer）与一组监听中的客户端 `asyncio.Queue`。
+6. 订阅竞态处理规则：当客户端连入 `GET /api/chat/stream?session_id={id}` 时：7. 若该会话当前无正在运行的任务：服务端立即下发 `done`（若数据库中状态为 error 则下发 `error`）事件并正常关闭流，客户端收到后根据最新历史渲染，不挂起也不报错；
+8. 若该会话有正在运行的任务：服务端在同一个同步执行段内将缓冲区快照与新订阅者队列绑定（杜绝 await 穿插造成的漏字或重复），先一次性推送已产生的全部缓冲区文本，随后继续下发后续实时增量，前端无感续接。
+9.
+前端重连处理规则：前端重连订阅前，先将当前气泡文本内容置空，统一通过服务端的增量追赶事件流重建，避免数据库已有内容与缓冲区重放文本发生叠加重复。
+10. **数据库写入节流与终态落盘顺序规定**：
+11. 流式生成期间，服务端不对每个字符/每个 chunk 立即执行数据库写入，而是采用节流批处理机制（每 300ms 刷新一次或累计到达固定步长时刷盘），确保多会话并发下的数据库 I/O 稳定。
+12. **终态顺序死锁与竞态防护**：当生成任务结束（`done`）、被中断（`interrupted`）或失败（`error`）时，必须严格按以下顺序执行收尾：**① 强制执行最终 flush 写库并同步更新 `messages` 与 `generation_tasks` 的终态 → ② 向所有活跃订阅者队列广播 `done` 或 `error` 终态事件 → ③ 从 `TaskManager` 活跃任务表中移除该任务**。严禁在数据库落盘前广播终态事件，确保客户端收到终态事件后拉取历史或重连时一定读到最新终态数据。
+13. **异常中断与优雅停服保护**：
+14. 正常停服（如 `Ctrl+C` 触发 FastAPI `lifespan` shutdown）：服务端主动取消所有正在运行的生成任务并等待其将已生成文本以 `"interrupted"` 状态刷入数据库、关闭全部 SSE 订阅流后再断开数据库连接，防止 Uvicorn 因长连接挂起而无法退出；
+15. 异常崩溃恢复：若服务进程因断电或强制杀死导致任务非正常终止，后端在下次启动初始化时自动扫描数据库中状态为 `"streaming"` 的未完消息及 `"running"` 的未完任务，将其统一更新为 `"interrupted"`（已中断）；
+16. 前端重连或刷新后，展示已生成的部分内容，并在气泡后方带有"已中断"标记，不自动重试，等待用户手动点击重新发送。
+
+
+### 2.6 ReAct 循环执行引擎架构
+
+```
+                   ┌──────────────────────────────────────────┐  
+                   │               会话历史上下文             │  
+                   └────────────────────┬─────────────────────┘  
+                                        │  
+                                        ▼  
+                   ┌──────────────────────────────────────────┐  
+                   │            普通系统提示词                │  
+                   │ (无工具阶段直接对话，不输出 Thought 文本标记)│  
+                   └────────────────────┬─────────────────────┘  
+                                        │  
+                                        ▼  
+                         ┌─────────────────────────────┐  
+                         │      LLMClient 流式推理     │  
+                         └──────────────┬──────────────┘  
+                                        │  
+                                        ▼  
+                         ┌─────────────────────────────┐  
+                         │ 检测结构化工具调用(tool_calls)│  
+                         └──────┬───────────────┬──────┘  
+                                │               │  
+          [命中 Action 调用]     │               │ [最终回答 / 普通文本增量]  
+                                ▼               ▼  
+     ┌─────────────────────────────┐        ┌───────────────────────────────┐  
+     │   分发至 ToolRegistry 查找  │        │ 输出最终回答 (Final Answer)   │  
+     └──────────────┬──────────────┘        │ SSE 逐块向前端实时推送        │  
+                    │                       └───────────────┬───────────────┘  
+                    ▼                                       │  
+     ┌─────────────────────────────┐                        ▼  
+     │ 验证注册表 (第二版为空注册表)│                ┌───────────────────────────────┐  
+     │ 校验到无工具可用            │                │ 循环结束，标记完成 (done)     │  
+     └─────────────────────────────┘                └───────────────────────────────┘
+```
+
+1. **结构定义**：2. 核心循环包含三要素：**Thought（思考推理）**、**Action / Action Input（工具行动）**、**Observation（环境观察）**，最终收敛于 **Final Answer（最终回答）**。
+3. 循环入口：`async def run(self, messages: list[ChatMessage]) -> AsyncIterator[str]`；
+4. 动作分发点：`async def dispatch_action(self, tool_call: ToolCall) -> str`；
+5. 最大步数上限：`max_steps = 5`，若达到最大步数仍未生成最终回答，下发 `INTERNAL_ERROR` 异常事件并安全中止。
+6. **第二版特化约束（无工具运行与流式防泄露）**：
+7. 严格遵循 Intent B1.4 与 B1.5 规定：第二版工具注册中心保留统一抽象协议，但**不注册任何具体工具（`ToolRegistry.is_empty() == True`）**；
+8. **流式防泄露策略**：无工具运行阶段，Prompt 模板**严禁**注入要求模型输出 `Thought:` / `Final Answer:` 文本前缀的指令，避免 Thought 思考过程随流式推送到前端违反“不展示模型推理过程”规范；而是使用标准对话系统提示词，模型单次流式输出直接作为最终回答向订阅流抛出；
+9. 保留 `ReActLoop.run` 循环骨架与 `dispatch_action` 入口，当且仅当检测到模型命中结构化工具调用时才进入分发；若分发点校验到 `ToolRegistry.is_empty()`，则安全阻断动作分发；
+10. 后续阶段接入具体工具时，统一基于 OpenAI 原生 `tools` 与 `tool_calls` 结构化参数交互，不依赖脆弱的文本解析器。
+
+
+### 2.7 功能分支拆分
+
+
+| 阶段    | 顺序 | 分支                          | 实现范围                                                                                                                                                                                                                                                                                | 对应 Intent 需求                                            | 状态    |
+|-----------|--------|---------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------|-----------|
+| 第一版 | 1      | `feature/app-shell`             | Python 服务骨架、配置、静态托管、前端外壳、侧栏导航、顶栏、四个占位页、hash 路由                                                                                                                                                                          | A1.1 ~ A1.9                                                     | 已完成 |
+| 第一版 | 2      | `feature/mock-agent`            | Agent 协议、mock 生成器、工厂、`POST /api/chat` SSE 接口与异常处理                                                                                                                                                                                                         | A3.1 ~ A3.3                                                     | 已完成 |
+| 第一版 | 3      | `feature/chat-window`           | 对话页完整实现：消息列表、气泡、时间戳、输入区、发送队列、SSE 接入、打字机光标                                                                                                                                                                         | A2.1 ~ A2.7、A2.9、A4.1                                       | 已完成 |
+| 第一版 | 4      | `feature/session-list`          | 会话列表与导航折叠：多会话模型、延迟创建、导航缩略、会话列表栏、新建/改名/删除、草稿保留与丢弃                                                                                                                                                | A6.1 ~ A6.11                                                    | 已完成 |
+| 第二版 | 5      | `feature/storage-crud`          | 本地 SQLite 异步持久化层、会话 CRUD、顶栏形态切换器 UI、密钥预检与静默态数据流切换                                                                                                                                                                         | B1.1（B1_1_1、B1_1_2 及 B1_1_3 静默切换）、B1.7、B1.9 | 已确认 |
+| 第二版 | 6      | `feature/online-react-agent`    | 本机模型配置读取、OpenAI 兼容流式客户端（LLMClient）、ReAct 循环引擎、工具注册中心预留、多轮上下文构建与中文错误提示                                                                                                                         | B1.2、B1.3、B1.4、B1.5、B1.6                                | 已确认 |
+| 第二版 | 7      | `feature/generation-decoupling` | 后台解耦任务管理器（TaskManager）、`POST /api/sessions/{id}/messages` 异步生成触发、会话级订阅流 `GET /api/chat/stream`、任务中断 `POST /api/chat/abort`、生成中切换形态安全中断（`B1_1_3`）、停服崩溃状态恢复与多会话并发验收 | B1.8、B1.1（B1_1_3 生成中中断收尾）                   | 已确认 |
+
 
 ---
 
@@ -140,17 +288,26 @@ FastAPI（Assistant/app.py）
 
 ### 3.1 环境变量与配置常量（`Assistant/config.py`）
 
-| 名称 | 类型 / 默认值 | 规定 |
-|---|---|---|
-| `ASSISTANT_HOST` | `str` / `"127.0.0.1"` | 环境变量；只绑定本机环回地址 |
-| `ASSISTANT_PORT` | `int` / `8000` | 环境变量；要求 `>= 1`，非法值回退默认并打 warning 日志 |
-| `ASSISTANT_STREAM_DELAY_MS` | `int` / `20` | 环境变量；每个文本块间隔毫秒数，要求 `>= 0` |
-| `ASSISTANT_CHUNK_SIZE` | `int` / `1` | 环境变量；每个文本块字符数，要求 `>= 1` |
-| `ASSISTANT_OPEN_BROWSER` | `bool` / `False` | 环境变量；设为 `1` 或 `true` 时服务就绪后自动弹出默认浏览器 |
-| `APP_VERSION` | `"0.1.0"` | 常量；应用版本号 |
-| `MAX_MESSAGES` | `30` | 常量；单次请求最大消息条数 |
-| `MAX_MESSAGE_CHARS` | `4000` | 常量；单条消息最大字符数 |
-| `WEB_DIR` | `Path(__file__).resolve().parent / "web"` | 常量；前端静态资源目录 |
+
+| 环境变量名             | Python 导出常量名 | 类型 / 默认值                        | 规定                                                                                                                                                                                                                                                                                                                                                                       |
+|-----------------------------|------------------------|-------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `ASSISTANT_HOST`            | `HOST`                 | `str` / `"127.0.0.1"`                     | 环境变量；强制校验环回地址白名单 `("127.0.0.1", "localhost", "::1")`，若配置为 `0.0.0.0` 或非环回地址则回退 `"127.0.0.1"` 并打 warning 日志；服务端严禁配置通配符 CORS（禁止 `allow_origins=["*"]`），并对写操作请求校验 `Origin` / `Host` 头只放行本机环回源，防止外部恶意网页跨站触发 API |
+| `ASSISTANT_PORT`            | `PORT`                 | `int` / `8000`                            | 环境变量；要求 `>= 1`，非法值回退默认并打 warning 日志                                                                                                                                                                                                                                                                                                 |
+| `ASSISTANT_STREAM_DELAY_MS` | `STREAM_DELAY_MS`      | `int` / `20`                              | 环境变量；离线 mock 每个文本块间隔毫秒数，要求 `>= 0`                                                                                                                                                                                                                                                                                                 |
+| `ASSISTANT_CHUNK_SIZE`      | `CHUNK_SIZE`           | `int` / `1`                               | 环境变量；离线 mock 每个文本块字符数，要求 `>= 1`                                                                                                                                                                                                                                                                                                       |
+| `ASSISTANT_OPEN_BROWSER`    | `OPEN_BROWSER`         | `bool` / `False`                          | 环境变量；设为 `1` 或 `true` 时服务就绪后自动弹出默认浏览器                                                                                                                                                                                                                                                                                           |
+| `ASSISTANT_API_KEY`         | `API_KEY`              | `str` / `""`                              | 环境变量；模型服务商 API 密钥，统一由 `config.py` 读取，严禁下发给前端或打印至日志                                                                                                                                                                                                                                                           |
+| `ASSISTANT_BASE_URL`        | `BASE_URL`             | `str` / `"https://api.openai.com/v1"`     | 环境变量；兼容 OpenAI 协议的模型 API 基础端点，读取时统一执行 `.strip().rstrip("/")`，防止拼接路径产生双斜杠                                                                                                                                                                                                                             |
+| `ASSISTANT_MODEL`           | `MODEL`                | `str` / `"gpt-4o-mini"`                   | 环境变量；在线形态调用的模型名称                                                                                                                                                                                                                                                                                                                             |
+| `ASSISTANT_DB_PATH`         | `DB_PATH`              | `Path` / `data/emibot.db`                 | 环境变量或常量；本地 SQLite 数据库文件绝对路径，所在目录自动递归创建                                                                                                                                                                                                                                                                           |
+| `ASSISTANT_REQUEST_TIMEOUT` | `REQUEST_TIMEOUT`      | `int` / `60`                              | 环境变量；模型上游网络请求超时时间（秒），下限为 5                                                                                                                                                                                                                                                                                                   |
+| -                           | `APP_VERSION`          | `"0.2.0"`                                 | 常量；第二版应用版本号                                                                                                                                                                                                                                                                                                                                            |
+| -                           | `MAX_MESSAGES`         | `30`                                      | 常量；单次请求滑动窗口最大上下文条数                                                                                                                                                                                                                                                                                                                       |
+| -                           | `MAX_MESSAGE_CHARS`    | `4000`                                    | 常量；单条用户输入最大字符限制                                                                                                                                                                                                                                                                                                                                |
+| -                           | `WEB_DIR`              | `Path(__file__).resolve().parent / "web"` | 常量；前端静态资源目录                                                                                                                                                                                                                                                                                                                                            |
+
+
+- 系统内所有模块需要读取环境变量与常量时，统一从 `Assistant.config` 导入上方定义的 **Python 导出常量名**，严禁在其它业务模块散落 `os.environ.get(...)`。
 
 ### 3.2 健康检查接口（`GET /api/health`）
 
@@ -158,679 +315,651 @@ FastAPI（Assistant/app.py）
 - 响应体（`application/json`）：
 
 ```json
-{
-  "status": "ok",
-  "version": "0.1.0",
-  "agent": "mock",
-  "time": "2026-11-06T14:13:21+08:00"
+{  
+"status": "ok",  
+"version": "0.2.0",  
+"agent": "mock",  
+"time": "2026-11-06T14:13:21+08:00"  
 }
 ```
 
-- 字段规定：`agent` 取自 `get_agent().name`；`time` 为带本地时区偏移的 ISO 8601 字符串（精确到秒）。
+- 字段规定：`agent` 取自当前活动 Agent 标识（离线默认为 `"mock"`，在线具备模型能力时为 `"online"`）；`time` 为带本地时区偏移的 ISO 8601 字符串（精确到秒）。
 
-### 3.3 聊天流式接口（`POST /api/chat`）
+### 3.3 模式与配置安全探测接口（`GET /api/config/status`）
 
-- 请求头：`Content-Type: application/json`
-- 请求体结构：
+- 模块位置：`Assistant/api/config_status.py`
+- 用途：前端切换到在线形态前探测本机环境是否具备在线能力，完全屏蔽敏感密钥内容。
+- 响应状态码：`200 OK`
+- 响应体结构：
 
 ```json
-{
-  "messages": [
-    { "role": "user", "content": "你好" },
-    { "role": "assistant", "content": "你好，我是 Emibot。" },
-    { "role": "user", "content": "怎么开始学 Agent？" }
-  ]
+{  
+  "has_api_key": true,  
+  "provider": "openai-compatible",  
+  "model": "gpt-4o-mini",  
+  "storage": "sqlite",  
+  "db_connected": true  
 }
 ```
 
-- 请求校验规定：
-  1. `messages`：必填数组，长度 `1 <= len <= 30`。
-  2. `messages[].role`：字面量枚举 `"user"` 或 `"assistant"`。
-  3. `messages[].content`：字符串，`strip()` 后长度 `>= 1`，且原始长度 `<= 4000`。
-  4. `messages[-1].role`：最后一条消息的 `role` 必须为 `"user"`。
-- 响应规定：
-  - 校验通过：`200 OK`，`Content-Type: text/event-stream; charset=utf-8`，附带响应头 `Cache-Control: no-cache`、`X-Accel-Buffering: no`。
-  - 校验失败：`422 Unprocessable Entity`，返回 FastAPI 标准 `{"detail": [...]}`。
-  - 流开始前内部异常：`500 Internal Server Error` JSON；流开始后异常通过 SSE `error` 事件下发并关闭流。
+- 安全防线：响应字段仅包含布尔指示位与脱敏模型名，严禁返回任何 API Key 的明文或掩码片段。
 
-### 3.4 SSE 事件协议
+### 3.4 在线会话与消息 RESTful 接口
+
+#### 3.4.1 获取所有在线会话（`GET /api/sessions`）
+
+- 响应：`200 OK`
+- 响应体：`[ { "id": "s_on_...", "title": "会话标题", "created_at": "...", "updated_at": "..." }, ... ]`（按 `updated_at` 降序）。
+
+#### 3.4.2 创建在线会话（`POST /api/sessions`）
+
+- 请求体：`{ "id": "s_on_...", "title": "首条消息截取标题" }`（若前端未指定 `id` 则由服务端生成 `s_on_<timestamp36>_<rand>`；`title` 经空白折叠后非空且长度在 `1..50` 字符之间）。
+- 响应：`201 Created`，返回创建成功的会话完整对象 `{ "id": "s_on_...", "title": "...", "created_at": "...", "updated_at": "..." }`。
+- 错误码：422（标题为空、格式非法或超过 50 字符）。
+
+#### 3.4.3 重命名会话（`PATCH /api/sessions/{session_id}`）
+
+- 请求体：`{ "title": "新标题" }`（空白折叠后非空，长度 `1..50` 字符）。
+- 响应：`200 OK`，返回更新后的会话完整对象 `{ "id": "s_on_...", "title": "新标题", "created_at": "...", "updated_at": "..." }`。
+- 错误码：404（会话不存在）、422（标题为空或超过 50 字符）。更新成功时同步将 `updated_at` 刷新为当前时间。
+
+#### 3.4.4 删除会话（`DELETE /api/sessions/{session_id}`）
+
+-
+行为（严格先后顺序）：
+1. 若该会话在 `TaskManager` 中有正在运行的生成任务，**首先调用 `await task_manager.cancel_and_wait(session_id)` 取消任务并等待协程收尾退出**，避免任务收尾写库与数据库级联删除发生竞态或外键冲突；
+2. 随后执行数据库删除，依靠外键 `ON DELETE CASCADE` 级联删除该会话及其关联的所有 `messages` 与 `generation_tasks` 记录。
+
+- 响应：`204 No Content`（删除成功，或会话原本不存在时保持幂等）。
+
+#### 3.4.5 获取指定会话的历史消息（`GET /api/sessions/{session_id}/messages`）
+
+- 响应：`200 OK`
+- 排序规则：按 `seq ASC` 绝对严格升序排列。
+- 字段规定：服务端返回每条消息时，若 `error_code` 非空，自动根据 **3.6 全局错误码与提示文案映射表** 填充 `error_message` 字段（否则为 `null`），前端直接渲染 `error_message`，无需在前端维护第二份错误码字典。
+- 响应体：
+
+```json
+[  
+{  
+"seq": 1,  
+"id": "m_u_1001",  
+"role": "user",  
+"content": "你好",  
+"status": "done",  
+"error_code": null,  
+"error_message": null,  
+"created_at": "2026-11-06T18:00:00+08:00"  
+},  
+{  
+"seq": 2,  
+"id": "m_a_1002",  
+"role": "assistant",  
+"content": "你好！我是 Emibot，请问有什么可以帮助你？",  
+"status": "done",  
+"error_code": null,  
+"error_message": null,  
+"created_at": "2026-11-06T18:00:02+08:00"  
+}  
+]
+```
+
+- 错误码：404（会话不存在）。
+
+#### 3.4.6 发送在线消息触发生成（`POST /api/sessions/{session_id}/messages`）
+
+- 模块位置：`Assistant/api/sessions.py`
+- 用途：在线形态下发送用户消息，触发后台独立解耦生成任务。
+- 请求体：		{  
+"content": "请分析一下这段代码"  
+}
+- 响应状态码：`202 Accepted`
+- 响应体（由服务端统一生成 `task_id`、`user_message_id`、`assistant_message_id`）：		{  
+"task_id": "t_789abc",  
+"session_id": "s_on_123456",  
+"user_message_id": "m_u_001",  
+"assistant_message_id": "m_a_002",  
+"status": "running"  
+}
+-
+行为与约束（严格防竞态顺序）：
+1. 入参校验（`content` 去除首尾空白后非空，长度 `1..4000` 字符），非法返回 `422 Unprocessable Entity`；
+2. 校验会话是否存在，不存在返回 `404 Not Found`；
+3. **同步检查与原子占位（防 409 竞态）**：在同一个同步执行段（中间无任何 `await`）中检查 `TaskManager` 是否已存在该 `session_id` 的活跃任务或占位锁；若已存在则立即返回 `409 Conflict`（单一会话严格串行执行）；若不存在则立即在 `TaskManager` 中同步登记该会话占位（若后续数据库写入抛错则在 `except` 中释放占位）；
+4. **单事务持久化三表记录**：在 `SessionStore` 写锁保护的同一个 SQLite 事务中：5. 插入用户消息（`id = m_u_...`, `status = 'done'`）；
+6. 插入初始助手占位消息（`id = m_a_...`, `status = 'streaming'`, `content = ''`），自增 `seq` 确保用户消息严格在助手消息之前；
+7. 插入 `generation_tasks` 记录（`task_id = t_...`, `session_id`, `message_id = m_a_...`, `status = 'running'`）；
+8. 更新当前会话的 `updated_at` 为当前时间戳；
+9. 在 `TaskManager` 启动后台独立 `asyncio.Task` 开始 ReAct 循环流式生成，立即返回 `202 Accepted`。
+
+### 3.5 聊天与解耦流式生成接口
+
+#### 3.5.1 离线聊天流式接口（`POST /api/chat`）
+
+- 模块位置：`Assistant/api/chat.py`
+- 用途：专供**离线形态**同步流式直出。
+- 入参：沿用第一版 `ChatRequest`（`messages` 列表，允许 `user` 与 `assistant` 角色交错，校验通过后调用 MockAgent）。
+- 协议：`text/event-stream; charset=utf-8` 同步 SSE 直出，保持第一版兼容性。
+
+#### 3.5.2 会话级增量订阅（`GET /api/chat/stream?session_id={session_id}`）
+
+- 模块位置：`Assistant/api/stream.py`
+- 协议：`text/event-stream; charset=utf-8`，响应头 `Cache-Control: no-cache`、`X-Accel-Buffering: no`。
+- 错误码：`404 Not Found`（当指定的 `session_id` 在数据库中不存在时直接返回 404）。
+- 竞态兜底规则（当会话存在时）：- 若客户端请求订阅时，该会话当前**已没有正在运行的任务**：服务端立即下发 `done`（若数据库中最新助手消息状态为 `error` 则下发 `error`）事件并正常关闭流，前端拉取消息列表回显最终状态；
+- 若该会话任务正在执行：服务端在同一个同步段内将 `chunk_buffer` 快照与新订阅者队列绑定，先将 `chunk_buffer` 中的增量文本一次性推给客户端完成追赶，随后继续实时广播后续增量，直至生成完毕下发 `done` 事件。
+- 事件格式与类型约定引用 **3.6 SSE 事件协议通用规范**。
+
+#### 3.5.3 中断生成任务（`POST /api/chat/abort`）
+
+- 模块位置：`Assistant/api/chat.py`
+- 用途：用户切换形态、删除会话或前端主动取消时，通知服务端安全中止指定会话的任务。
+- 请求体：		{  
+"session_id": "s_on_123456"  
+}
+- 响应：`200 OK`- 若成功中断正在运行的任务：`{ "session_id": "s_on_123456", "status": "interrupted" }`；
+- 若该会话当前无活跃任务（幂等无操作）：`{ "session_id": "s_on_123456", "status": "idle" }`。
+- 行为：`TaskManager` 查找到该会话对应的 `asyncio.Task` 时调用 `task.cancel()`
+并等待其收尾完成（协程内部捕获 `CancelledError` 后将已生成片段与 `"interrupted"` 状态写入 `messages` 和 `generation_tasks` 表，随后向所有监听中的客户端下发 `done`（`finish_reason="interrupted"`），最后重新 `raise CancelledError`）。
+
+### 3.6 SSE 事件协议通用规范（单一事实来源）
 
 每个事件由 `event: <type>\ndata: <json>\n\n` 组成，`data` 为单行 UTF-8 JSON（`ensure_ascii=False`）：
 
-| 事件名 | `data` JSON 结构 | 触发时机与规定 |
-|---|---|---|
-| `meta` | `{"message_id":"m_8f3a","created_at":"2026-11-06T10:20:13+08:00","model":"mock-0.1"}` | 流启动时发送且仅发送一次 |
-| `delta` | `{"text":"你好"}` | 每次产出增量文本块时发送，可发送多次 |
-| `done` | `{"finish_reason":"stop","duration_ms":1820}` | 回复正常生成完毕时发送一次，随后结束流 |
-| `error` | `{"code":"stream_error","message":"回复生成失败"}` | 流式生成中途发生异常时发送一次，随后结束流 |
 
-### 3.5 后端数据模型与协议（`Assistant/agent/base.py`、`Assistant/api/schemas.py`）
+| 事件名 | `data` JSON 结构                                                                                                                   | 触发时机与规定                                     |
+|-----------|--------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------|
+| `meta`    | `{"task_id":"t_123","session_id":"s_on_456","message_id":"m_a_8f3a","created_at":"2026-11-06T10:20:13+08:00","model":"gpt-4o-mini"}` | 流启动时发送且仅发送一次                      |
+| `delta`   | `{"text":"增量文本"}`                                                                                                            | 每次产出增量文本块时发送，可发送多次    |
+| `done`    | `{"finish_reason":"stop"                                                                                                             | "interrupted","duration_ms":1820}`                        | 回复正常生成完毕或被中断时发送一次，随后结束流 |
+| `error`   | `{"code":"<ERROR_CODE>","message":"<中文友好提示文案>"}`                                                         | 生成中途发生异常时发送一次，随后结束流 |
+
+
+#### 全局错误码与提示文案映射表（System Error Code Registry）
+
+本表为全系统异常分类、SSE `error` 事件及后端填充 `error_message` 的**唯一事实来源**：
+
+
+| 错误码 (`code`) | 触发场景                                                                                                         | 官方中文提示文案 (`message`)                                                         |
+|--------------------|----------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
+| `NO_API_KEY`       | 未配置模型 API 密钥或密钥为空                                                                            | `未检测到模型密钥，请在本地环境变量配置并重启服务后重试。`       |
+| `AUTH_FAILED`      | 上游 401/403 鉴权失败或 Key 无效                                                                            | `模型密钥鉴权失败，请检查本地配置的 API Key 是否有效。`                |
+| `QUOTA_EXCEEDED`   | 上游 429 频率超限或服务商额度已耗尽                                                                   | `模型服务商额度已耗尽或请求过于频繁，请稍后再试。`                   |
+| `NETWORK_ERROR`    | 网络中断、DNS 失败、连接被拒或传输断开（`httpx.ConnectError` / `ReadError` 等）                  | `网络连接异常，无法访问模型服务商，请检查网络连接或代理设置。` |
+| `TIMEOUT`          | 连接或读取模型服务商响应超时（`httpx.TimeoutException`）                                             | `连接模型服务商超时，请检查您的网络连接与代理设置。`                |
+| `UPSTREAM_ERROR`   | 上游返回 5xx 故障，或除 401/403/429 外的其他 4xx 错误（如 400/404 模型名或端点配置有误） | `模型服务商返回异常，请检查模型与端点配置或稍后重试。`             |
+| `INTERNAL_ERROR`   | 本地未预期异常或 ReAct 步数超限                                                                          | `生成过程发生异常，请重试。`                                                    |
+
+
+### 3.7 SQLite 数据库模式与表结构（`data/emibot.db`）
+
+```sql
+PRAGMA journal_mode = WAL;  
+PRAGMA foreign_keys = ON;  
+PRAGMA busy_timeout = 5000;  
+  
+-- 会话表  
+CREATE TABLE IF NOT EXISTS sessions (  
+    id TEXT PRIMARY KEY,  
+    title TEXT NOT NULL,  
+    created_at TEXT NOT NULL,  
+    updated_at TEXT NOT NULL  
+);  
+  
+-- 消息表（引入 seq 自增序号保证绝对排序，error_code 记录失败原因）  
+CREATE TABLE IF NOT EXISTS messages (  
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,  
+    id TEXT NOT NULL UNIQUE,  
+    session_id TEXT NOT NULL,  
+    role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),  
+    content TEXT NOT NULL,  
+    status TEXT NOT NULL CHECK(status IN ('done', 'streaming', 'error', 'interrupted')),  
+    error_code TEXT,  
+    created_at TEXT NOT NULL,  
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE  
+);  
+  
+-- 生成任务记录表（用于解耦追踪与停机中断补偿）  
+CREATE TABLE IF NOT EXISTS generation_tasks (  
+    task_id TEXT PRIMARY KEY,  
+    session_id TEXT NOT NULL,  
+    message_id TEXT NOT NULL,  
+    status TEXT NOT NULL CHECK(status IN ('running', 'completed', 'interrupted', 'failed')),  
+    created_at TEXT NOT NULL,  
+    updated_at TEXT NOT NULL,  
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,  
+    FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE  
+);  
+  
+CREATE INDEX IF NOT EXISTS idx_messages_session_seq ON messages(session_id, seq);  
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON generation_tasks(status);
+```
+
+- **连接生命周期与并发写锁规定**：- `aiosqlite` 无内置连接池且每个连接对应一个后台线程；为保证代码精简好维护并杜绝频繁创建线程与 `database is locked` 异常，应用在 FastAPI `lifespan` 周期内**复用单一长连接（Single Shared Connection）**。
+- 启动初始化连接时一次性执行 `PRAGMA journal_mode = WAL;`、`PRAGMA foreign_keys = ON;` 与 `PRAGMA busy_timeout = 5000;`。
+- 在 `SessionStore` 中维护一把全局异步写锁 `_write_lock = asyncio.Lock()`：所有涉及写库的操作（`INSERT`、`UPDATE`、`DELETE` 及 `commit`）统一在 `async with self._write_lock:` 内串行执行；只读查询直接并发读取，兼顾零锁冲突与极简维护性。
+
+### 3.8 后端数据模型与协议
 
 ```python
-from typing import AsyncIterator, Literal, Protocol, Sequence
-from pydantic import BaseModel
+from collections.abc import AsyncIterator, Sequence  
+from typing import Literal, Protocol  
+from pydantic import BaseModel, Field  
 
 
-class ChatMessage(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str
+class SendMessageRequest(BaseModel):  
+"""POST /api/sessions/{session_id}/messages 在线发送用户消息请求体校验模型。"""  
+content: str = Field(min_length=1, max_length=4000)  
 
 
-class Agent(Protocol):
-    name: str
+class ChatMessage(BaseModel):  
+"""系统内部流转、离线请求与历史持久化的领域实体模型（允许 user 与 assistant 角色）。"""  
+id: str | None = None  
+role: Literal["user", "assistant"]  
+content: str = Field(default="")  
+seq: int | None = None  
+status: Literal["done", "streaming", "error", "interrupted"] = "done"  
+error_code: str | None = None  
+error_message: str | None = None  
+created_at: str | None = None  
 
-    def stream_reply(
-        self, messages: Sequence[ChatMessage]
-    ) -> AsyncIterator[str]:
-        ...
+
+class ToolCall(BaseModel):  
+"""结构化工具调用模型。"""  
+id: str  
+name: str  
+arguments: dict  
+
+
+class Agent(Protocol):  
+"""Agent 抽象协议。"""  
+name: str  
+model: str  
+
+def stream_reply(  
+self, messages: Sequence[ChatMessage]  
+) -> AsyncIterator[str]:  
+"""根据历史消息流式生成回复增量文本。"""  
+...  
+
+
+class BaseTool(Protocol):  
+"""工具与技能预留抽象协议。"""  
+name: str  
+description: str  
+parameters: dict  
+
+async def execute(self, **kwargs) -> str:  
+"""执行工具逻辑并返回观察字符串。"""  
+...
 ```
 
-### 3.6 前端数据模型与编码约定
+- **离线 `ChatRequest` 兼容约定**：`Assistant/api/schemas.py` 中的 `ChatRequest`（供离线 `POST /api/chat` 使用）继续接收 `messages: list[ChatMessage]`（允许 `"user"` 与 `"assistant"` 角色交错，并在 validator 中校验每条非空、`<= 4000` 字符且最后一条为 `"user"`），确保离线多轮对话完全兼容。
+- **外部核心依赖**：第二版在 `requirements.txt` 中引入 `httpx>=0.28,<1.0`（提供异步流式 HTTP 客户端）与 `aiosqlite>=0.21,<1.0`（提供异步 SQLite 驱动）。
 
-- 前端会话对象（`store.js`）：
+### 3.9 前端数据模型与编码约定
+
+- 前端双形态状态管理（`store.js`）：
 
 ```js
-{
-  id: 's_<timestamp>_<rand>',
-  title: '首条消息前10字', // 空白折叠与Unicode安全截取后的标题
-  createdAt: Date,
-  updatedAt: Date,
-  messages: [], // 包含的消息对象列表
-  draft: ''     // 该会话中已输入未发送的草稿文本
+{  
+  mode: 'offline',                 // 当前工作台形态：'offline' | 'online'  
+  activeSessionId: null,           // 当前活动会话 ID；为 null 时表示处于未创建的空白草稿态  
+  draftText: '',                   // 空白草稿态中已输入未发送的文字  
+  offlineSessions: [],             // 离线会话列表（纯内存，ID 前缀 s_off_）  
+  onlineSessions: [],              // 在线会话列表（同步自 SQLite，ID 前缀 s_on_）  
+  sessionDrafts: {},               // 各会话未发送草稿字典：{ [sessionId]: text }（依靠 s_off_ 与 s_on_ 前缀天然隔离）  
+  streamingBySession: {},          // 当前活跃 SSE 订阅流映射：{ [sessionId]: { abortController, taskId } }  
+  queue: []                        // 离线形态发送队列  
 }
 ```
 
-- 前端多会话与队列状态（`store.js`）：
-
-```js
-{
-  activeSessionId: null,           // 当前活动会话 ID；为 null 时表示处于未创建的空白草稿态
-  draftText: '',                   // 空白草稿态中已输入未发送的文字
-  sessions: [],                    // 全部已创建会话列表（按时间降序）
-  queue: [],                       // 全局发送队列：[{ sessionId, messageId, snapshot }]
-  isStreaming: false,              // 全局流式互斥锁：是否正在流式生成回复
-  currentAbortController: null     // 当前流式请求的 AbortController 实例，用于会话删除或异常时安全中止
-}
-```
-
+- **流状态与切走/切回规则**：- 当前活动会话是否有正在连接的实时流，通过 `Boolean(store.streamingBySession[store.activeSessionId])` 判断；
+- **切走清理**：当用户从在线会话 X 切换到其他会话或切离对话页时，前端调用 `store.streamingBySession[X].abortController.abort()` 断开该会话的 SSE 订阅流，并**立即执行 `delete store.streamingBySession[X]`**（注意：绝不调用 `/api/chat/abort`，后台生成任务继续运行）；
+- **切回恢复**：当用户切回在线会话 X 时，前端拉取 `GET /api/sessions/X/messages`；若最新一条助手消息 `status === 'streaming'`，前端新建 `AbortController` 登记至 `store.streamingBySession[X]`，清空该气泡当前文字，并连入 `GET /api/chat/stream?session_id=X` 追赶并续接实时流；当收到 `done` 或 `error` 事件时，执行 `delete store.streamingBySession[X]`。
 - 前端消息对象（`store.js`）：
 
 ```js
-{
-  id: 'm_<timestamp>_<rand>',
-  role: 'user' | 'assistant',
-  content: '',
-  createdAt: Date,
-  status: 'done' | 'streaming' | 'error'
-}
-```
-
-- 前端路由对象（`routes.js`）：
-
-```js
-{
-  hash: '#/chat',
-  label: '对话',
-  title: '对话',
-  view: 'chat' | 'placeholder',
-  icon: 'icon-chat',
-  description: ''
+{  
+seq: 1,                          // 数据库自增序号（在线消息具备）  
+id: 'm_u_...',                   // 离线为客户端生成 m_off_...，在线为服务端生成 m_u_... / m_a_...  
+role: 'user' | 'assistant',  
+content: '',  
+createdAt: Date,  
+status: 'done' | 'streaming' | 'error' | 'interrupted',  
+errorCode: null | string,        // 关联的系统错误码  
+errorMessage: null | string      // 后端根据 3.6 映射表返回的标准中文错误提示  
 }
 ```
 
 - 核心数据处理与安全规定：
-  - 会话标题生成规则：统一使用 `Array.from(rawContent.trim().replace(/\s+/g, ' ')).slice(0, 10).join('')`；先将换行符、制表符及连续空格折叠为单空格，再按 Unicode 码点切片，防止 emoji 等 UTF-16 代理对截断出现乱码。
-  - XSS 防御规定：所有用户输入的标题在注入 DOM 时，严禁使用 `innerHTML`，必须使用 `element.textContent` 或 `document.createTextNode` 渲染。
-  - 草稿状态写入时机：统一在输入框 `input` 事件触发时实时写入当前活动目标（草稿态存入 `store.draftText`，已有会话存入对应 `session.draft`），会话切换与路由切离时直接复用，不维护分散的时机。
+- 会话标题生成规则：统一使用 `Array.from(rawContent.trim().replace(/\s+/g, ' ')).slice(0, 10).join('')`；先将换行符、制表符及连续空格折叠为单空格，再按 Unicode 码点切片，防止 emoji 等 UTF-16 代理对截断出现乱码。
+- XSS 防御规定：所有用户输入的标题与文本在注入 DOM 时，严禁使用 `innerHTML`，必须使用 `element.textContent` 或 `document.createTextNode` 渲染。
+- 草稿状态写入时机：统一在输入框 `input` 事件触发时实时写入当前活动目标（草稿态存入 `store.draftText`，已有会话存入对应 `sessionDrafts[id]`），会话切换与路由切离时直接复用，不维护分散的时机。
+-
+命名与格式规定：
 
-- 命名与格式规定：
-  - Python：函数/变量 `snake_case`，类 `PascalCase`，常量 `UPPER_SNAKE_CASE`，4 空格缩进，公开函数写一行中文 docstring。
-  - JavaScript：函数/变量 `camelCase`，常量 `UPPER_SNAKE_CASE`，2 空格缩进，分号结尾，单引号字符串，ES Modules。
-  - CSS：BEM 命名（`block__element--modifier`），状态类 `is-active` / `is-disabled` / `is-streaming` / `is-error` / `is-editing`，主侧栏缩略态 `.app-sidebar--collapsed`，会话列表组件命名（`.chat-sessions`、`.chat-sessions__header`、`.chat-sessions__reserved`、`.chat-sessions__new-btn`、`.chat-sessions__list`、`.session-item`、`.session-item__title`、`.session-item__actions`、`.session-item__btn`、`.session-item__input`），禁止使用 `#id` 选择器写样式，颜色与尺寸统一引用 `--color-*`、`--text-*`、`--space-*`、`--radius-*`、`--layout-*`、`--motion-*`。
+- Python：函数/变量 `snake_case`，类 `PascalCase`，常量 `UPPER_SNAKE_CASE`，4 空格缩进，公开函数写一行中文 docstring。
+- JavaScript：函数/变量 `camelCase`，常量 `UPPER_SNAKE_CASE`，2 空格缩进，分号结尾，单引号字符串，ES Modules。
+- CSS：BEM 命名（`block__element--modifier`），状态类 `is-active` / `is-disabled` / `is-streaming` / `is-error` / `is-editing` / `is-interrupted`，主侧栏缩略态 `.app-sidebar--collapsed`，形态切换胶囊命名（`.mode-toggle`、`.mode-toggle__pill`、`.mode-toggle__dot`、`.mode-toggle__label`），禁止使用 `#id` 选择器写样式，颜色与尺寸统一引用 `--color-*`、`--text-*`、`--space-*`、`--radius-*`、`--layout-*`、`--motion-*`。
 
 ---
 
 ## 四、需求列表
 
-### A 第一版
+<!-- A 阶段实现规格已归档至 Archive/vA_0_spec.md -->
 
-#### A1.0 工作台外壳
+### B 第二版
 
-##### A1.1 技术基线
+#### B1.0 在线对话
 
-**A1_1_1 Python 3.12 虚拟环境与精简依赖**
-- 状态：已完成
-- 需求描述：建立项目内独立的 Python 3.12 虚拟环境，仅引入 FastAPI 与 Uvicorn 两项直接依赖。
-- 详细方案设计：
-  1. 在根目录提供 `requirements.txt`，固定 `fastapi>=0.115,<1.0` 与 `uvicorn>=0.34,<1.0`，不安装 `uvicorn[standard]` 以规避 Windows 原生扩展编译问题。
-  2. 使用 `py -V:Astral\CPython3.12.13 -m venv .venv` 创建 `.venv`，并通过 `.gitignore` 忽略 `.venv/` 与 `__pycache__/`。
+##### B1.1 形态切换
 
-**A1_1_2 原生前端与同源静态托管**
-- 状态：已完成
-- 需求描述：前端采用零构建的原生 HTML / CSS / ES Modules，由 FastAPI 进程同源托管并禁用静态缓存。
-- 详细方案设计：
-  1. 在 `Assistant/app.py` 创建 `FastAPI` 实例时设置 `docs_url=None`、`redoc_url=None`（防止加载外部 CDN 资源），保留 `openapi_url="/api/openapi.json"`。
-  2. 注册 HTTP 中间件 `no_cache_static_middleware`：对所有非 `/api` 前缀的 `GET` 请求剥离 `If-None-Match` 与 `If-Modified-Since` 条件请求头，并将响应头设为 `Cache-Control: no-store, no-cache, must-revalidate`，强制返回 `200 OK` 最新静态资源，杜绝 `304 Not Modified` 复用旧缓存响应。
-  3. 在 `/api` 路由注册完成后，使用 `StaticFiles(directory=str(WEB_DIR), html=True)` 挂载到 `/`。
-  4. 在挂载静态目录前调用 `mimetypes.add_type("text/javascript", ".js")` 与 `mimetypes.add_type("text/css", ".css")`，规避 Windows 注册表将 `.js` 映射为 `text/plain` 导致浏览器拒绝执行 ES Modules 的问题。
+**B1_1_1 顶栏形态切换交互组件与状态响应**
 
-**A1_1_3 离线内联图标库与系统字体栈**
-- 状态：已完成
-- 需求描述：所有图标与字体均离线自包含，不发起任何外部字体、图标或图片请求。
-- 详细方案设计：
-  1. 在 `Assistant/web/index.html` 的 `<head>` 中使用内联 SVG data URI 设置 `favicon`，避免 `/favicon.ico` 404。
-  2. 在 `<body>` 顶部放置隐藏 `<svg class="app-svg-sprite" aria-hidden="true">`，内联定义 `icon-brand`、`icon-chat`、`icon-database`、`icon-mail`、`icon-device`、`icon-settings`、`icon-send` 共 7 个 `24x24` 线性图标 symbol（`stroke="currentColor"`、`stroke-width="1.6"`）。
-  3. 在 `Assistant/web/js/icons.js` 导出冻结常量 `ICONS`，通过 `dom.js` 的 `createSvgIcon(symbolId, className)` 动态创建 `<svg><use href="#..."></use></svg>`。
+- 状态：已确认
+- 需求描述：顶部栏右上角常驻显示当前工作台形态（离线 / 在线），支持鼠标点击切换；每次启动或刷新页面默认进入离线形态。
+-
+详细方案设计：
+1. 在 `Assistant/web/index.html` 的 `.app-header` 中，将原有的静态标签替换为交互式切换组件 `<button class="mode-toggle" id="mode-toggle" type="button" aria-label="切换工作台形态"><span class="mode-toggle__pill"><span class="mode-toggle__dot"></span><span class="mode-toggle__label" id="mode-label">离线模式</span></span></button>`。
+2. 在 `Assistant/web/css/components.css` 定义组件样式：3. 离线态：指示点为 `--color-text-muted`（深灰/银白微光），文字显示"离线模式"；
+4. 在线态：指示点为绿光渐变（`#10b981`），附带微妙呼吸效果，文字显示"在线模式"；
+5. 支持悬停与键盘访问高亮。
+6. 在 `Assistant/web/js/store.js` 中维护全局状态 `state.mode = 'offline'`；页面初次加载时始终强制初始化为 `'offline'`，符合零网络默认约定。
 
-##### A1.2 启动与访问
+**B1_1_2 本机模型密钥预检与阻断提示**
 
-**A1_2_1 模块化单命令启动入口**
-- 状态：已完成
-- 需求描述：支持在项目根目录通过一条命令启动服务，并在控制台输出可访问地址。
-- 详细方案设计：
-  1. 实现 `Assistant/__main__.py` 的 `main()`：首先调用 `sys.stdout.reconfigure(encoding="utf-8")` 与 `sys.stderr.reconfigure(encoding="utf-8")` 消除 Windows 控制台中文乱码。
-  2. 从 `Assistant/config.py` 读取 `HOST`（默认 `127.0.0.1`）与 `PORT`（默认 `8000`），打印 `Emibot 已启动：http://{HOST}:{PORT}`。
-  3. 直接传入 `app` 实例调用 `uvicorn.run(app, host=HOST, port=PORT, log_level="info")`，无需激活虚拟环境即可通过 `.\.venv\Scripts\python.exe -m Assistant` 启动。
+- 状态：已确认
+- 需求描述：用户点击切换至在线形态前，自动检查本机是否配置模型密钥；若未配置，给出明确中文提示并留在离线形态，阻止切换。
+-
+详细方案设计：
+1. 在 `Assistant/api/config_status.py` 提供轻量探测接口 `GET /api/config/status`，后端读取 `Assistant.config.API_KEY`；当且仅当去除首尾空白字符后长度大于 0 时，返回 `{"has_api_key": true, ...}`（完整 5 字段见 3.3 节），否则返回 `{"has_api_key": false, ...}`。
+2. 前端在 `mode-toggle` 点击事件回调中：3. 若当前为离线形态、准备切入在线形态，首先发起 `await api.checkConfigStatus()`；
+4. 若 `has_api_key === false`：在对话区顶部弹出弱侵入提示横幅，文案严格匹配 3.6 节 `NO_API_KEY` 映射："未检测到模型密钥，请在本地环境变量配置并重启服务后重试。"，中断切换流程，保持 `state.mode = 'offline'`；
+5. 若 `has_api_key === true`：允许切换，进入形态流转逻辑。
 
-**A1_2_2 配置读取与健康检查端点**
-- 状态：已完成
-- 需求描述：集中校验环境变量配置，并提供 `GET /api/health` 供启动自检与运行确认。
-- 详细方案设计：
-  1. 在 `Assistant/config.py` 初始化名称为 `assistant` 的标准库 `logging` 记录器（格式 `%(asctime)s %(levelname)s %(name)s %(message)s`），实现 `_read_int_env(name, default, min_value)`，对空串、非整数或越界值打印 warning 并回退默认值。
-  2. 在 `Assistant/api/health.py` 实现 `GET /api/health`，返回 `status="ok"`、`version=APP_VERSION`、`agent` 名称与本地 ISO 8601 时间戳。
+**B1_1_3 模式切换数据流转与进行中生成安全中断**
 
-**A1_2_3 一键启动文件与自动弹出默认浏览器**
-- 状态：已完成
-- 需求描述：在项目根目录提供一键启动文件 `start.bat`，打开后直接启动后端服务，并在服务就绪后自动用系统默认浏览器弹出工作台网页。
-- 详细方案设计：
-  1. 在项目根目录新增 `start.bat`：切换代码页为 UTF-8（`chcp 65001 >nul`），定位到脚本所在目录（`cd /d "%~dp0"`），自动清理仍占用 `8000` 端口的旧服务进程，设置环境变量 `ASSISTANT_OPEN_BROWSER=1`，调用 `".\.venv\Scripts\python.exe" -m Assistant` 启动服务；若异常退出则执行 `pause` 保留窗口便于查看报错。
-  2. 在 `Assistant/config.py` 新增布尔配置 `OPEN_BROWSER`（当环境变量 `ASSISTANT_OPEN_BROWSER` 为 `"1"` 或 `"true"` 时为 `True`，默认 `False`）。
-  3. 在 `Assistant/__main__.py` 中：当 `OPEN_BROWSER` 为 `True` 时，在调用 `uvicorn.run()` 前启动一个守护线程 `_open_browser_when_ready(host, port)`，轮询 `http://{host}:{port}/api/health` 直到返回 `200`（最长等待 5 秒），随即调用标准库 `webbrowser.open(f"http://{host}:{port}/")` 自动弹出默认浏览器。
-
-##### A1.3 后台布局
-
-**A1_3_1 顶栏、侧栏与内容区三段式外壳**
-- 状态：已完成
-- 需求描述：搭建仿 AstrBot 风格的顶栏、左侧常驻导航栏与右侧主内容区，整页 100vh 无双滚动条。
-- 详细方案设计：
-  1. 在 `Assistant/web/index.html` 构建顶栏 `.app-header`（包含品牌链接 `.app-brand`、分隔线、当前页标题 `#page-title`、弹性空白、`Mock 模式` 徽标与版本号 `v0.1.0`）与主体 `.app-body`。
-  2. `.app-body` 左侧为 `.app-sidebar`（含 `<nav class="nav" aria-label="主导航"><ul class="nav__list" id="nav-list"></ul></nav>` 与底部 `.app-sidebar__footer` 运行状态点），右侧为 `<main class="app-main" id="main-content">`。
-  3. 在 `Assistant/web/css/layout.css` 中固定 `.app-header` 高 `50px`、`.app-sidebar` 宽 `235px`，`body` 设为 `height: 100vh; overflow: hidden`，仅允许 `.nav` 与对话滚动区 `.chat__scroll` 各自内部滚动。
-
-##### A1.4 导航五项
-
-**A1_4_1 路由表配置源与动态导航渲染**
-- 状态：已完成
-- 需求描述：按固定顺序渲染"对话、个人数据库、管理 Mail、手机端联动、配置"五个导航入口，并支持悬停与选中高亮。
-- 详细方案设计：
-  1. 在 `Assistant/web/js/routes.js` 定义冻结数组 `ROUTES`，依次配置 `#/chat`、`#/database`、`#/mail`、`#/device`、`#/settings` 五项路由的 `hash`、`label`、`title`、`view`、`icon` 与 `description`。
-  2. 在 `Assistant/web/js/main.js` 的 `buildNavList()` 中遍历 `ROUTES`，使用 `document.createElement` 生成 `<li class="nav__item"><a class="nav__link" href="..." title="...">` 节点并挂载到 `#nav-list`。
-  3. 在 `Assistant/web/css/components.css` 中设置 `.nav__link` 高 `40px`、圆角 `8px`；悬停态应用 `--color-primary-softer` 背景与主色文字；激活态 `.is-active` 应用 `--color-primary-soft` 背景、主色文字与 `aria-current="page"`。
-
-##### A1.5 默认落地页
-
-**A1_5_1 根地址与未知 Hash 重定向至对话页**
-- 状态：已完成
-- 需求描述：访问根路径或输入未定义的 hash 时，自动落到 `#/chat` 对话主窗口且不污染浏览器历史栈。
-- 详细方案设计：
-  1. 在 `Assistant/web/js/routes.js` 导出 `DEFAULT_HASH = '#/chat'` 与查询函数 `findRouteByHash(rawHash)`。
-  2. 在 `Assistant/web/js/router.js` 的 `syncRoute()` 中检查 `window.location.hash`：当结果为空或 `findRouteByHash` 返回 `null` 时，调用 `window.history.replaceState(null, '', targetUrl)` 将地址替换为 `#/chat` 并加载对话路由。
-
-##### A1.6 页面切换
-
-**A1_6_1 Hashchange 监听与常驻视图显隐切换**
-- 状态：已完成
-- 需求描述：点击导航或浏览器前进/后退时同步更新地址栏、顶栏标题、文档标题与主内容区视图，刷新后保持当前页。
-- 详细方案设计：
-  1. 在 `Assistant/web/js/router.js` 监听 `window` 的 `hashchange` 事件并在初始化时立即执行一次 `syncRoute()`。
-  2. 每次路由同步时：将 `#page-title` 更新为 `route.title`，将 `document.title` 更新为 `${route.title} · Emibot`，更新 `.nav__link` 的 `.is-active` 与 `aria-current`。
-  3. 视图切换采用显隐控制：当 `route.view === 'chat'` 时设 `#view-chat.hidden = false`、`#view-placeholder.hidden = true`；反之隐藏 `#view-chat`、显示 `#view-placeholder` 并触发 `onRouteRender(route)`，确保对话页 DOM 状态与滚动位置在切页时不丢失。
-
-##### A1.7 占位页
-
-**A1_7_1 四页共用空状态视图组件**
-- 状态：已完成
-- 需求描述：个人数据库、管理 Mail、手机端联动、配置四页展示统一的居中空状态提示，不含任何交互控件。
-- 详细方案设计：
-  1. 在 `Assistant/web/js/views/placeholder.js` 实现 `renderPlaceholder(container, route)`：使用 `el()` 与 `createSvgIcon()` 构建 `.placeholder` 容器，依次包含 `.placeholder__icon`（72px 圆底 + 48px 图标）、`h2.placeholder__title`、`.badge.badge--neutral`（"尚未开放"）与 `p.placeholder__text`（路由说明文案）。
-  2. 通过 `container.replaceChildren(cardEl)` 替换 `#view-placeholder` 子节点，并在 `components.css` 中设置 `.view--placeholder` 水平与垂直居中，最大宽度 `420px`。
-
-##### A1.8 主题
-
-**A1_8_1 深色主题 CSS 变量令牌体系**
-- 状态：已完成
-- 需求描述：全站统一深色主题，所有颜色、字号、圆角、间距与布局尺寸集中定义在 CSS 变量中。
-- 详细方案设计：
-  1. 在 `Assistant/web/css/tokens.css` 的 `:root` 中声明 `color-scheme: dark` 及全部令牌：背景 `--color-bg: #1a1a1a`、表面 `--color-surface: #242424`、主色 `--color-primary: #5ba4d4`、边框 `--color-border: #333333`、文本层级、间距 `--space-1`~`--space-7`、圆角 `--radius-sm`~`--radius-pill` 与布局尺寸变量。
-  2. 在 `base.css`、`layout.css`、`components.css`、`chat.css` 中全部通过 `var(--*)` 引用令牌，不为组件写死颜色常量，为后续扩展浅色主题预留挂载点。
-
-##### A1.9 屏幕适配
-
-**A1_9_1 三档响应式断点与图标栏折叠**
-- 状态：已完成
-- 需求描述：适配桌面、平板与手机三种视口宽度，窄屏下侧栏自动折叠为图标栏且不出现横向滚动条。
-- 详细方案设计：
-  1. 在 `Assistant/web/css/layout.css` 与 `components.css` 设置两处媒体查询断点：
-     - `< 1024px`（平板 `768px ~ 1023px`）：`.app-sidebar` 宽度收窄为 `var(--layout-sidebar-compact)`（`72px`），`.nav__label` 与 `.app-sidebar__footer-text` 使用 clip 隐藏但保留 DOM 供读屏器读取，图标居中并依赖 `<a title="...">` 提供悬停提示。
-     - `< 768px`（手机）：`.app-sidebar` 宽度收窄为 `var(--layout-sidebar-mobile)`（`64px`），隐藏顶栏 `.app-brand__name` 与 `.app-header__version`，`.view--chat` 移除左右内边距。
-  2. `.app-main` 设置 `min-width: 0; overflow: hidden`，确保任何宽度下不产生横向溢出。
+- 状态：已确认
+- 需求描述：切换形态后立即渲染目标形态的会话与消息，并统一落在空白草稿态；切回离线时保留本次运行周期的离线内存会话；若在回复生成过程中切换形态，立即安全中断当前生成，在线已生成部分保存并标为已中断，离线直接丢弃。
+-
+详细方案设计：
+1. 数据流切换：2. 在 `store.js` 中分离两组会话状态：`state.offlineSessions` 与 `state.onlineSessions`；
+3. 切至在线：从后端 `GET /api/sessions` 拉取持久化列表注入 `state.onlineSessions`，激活会话重置为 `null`（空白草稿态），输入框自动保留当前草稿文字；
+4. 切回离线：视图重新绑定 `state.offlineSessions`，同样激活会话置为 `null`；
+5. 生成中切换的安全中断（Abort & Persist）：6. 检查当前会话是否处于流式生成中（`store.streamingBySession[store.activeSessionId]` 存在）：7. 前端调用该会话专属的 `abortController.abort()`，停止向当前界面追加文字；
+8. 若处于离线形态：直接丢弃该消息，从消息列表移除占位卡片；
+9. 若处于在线形态：向服务端发送 `POST /api/chat/abort`（携带 `session_id`），服务端后台任务捕获 `CancelledError`，将当前已生成的文本内容落库至 `messages` 表并将状态置为 `"interrupted"`（同时更新 `generation_tasks` 状态为 `"interrupted"`），最后重新抛出 `CancelledError`；
+10. 从 `store.streamingBySession` 中清除当前会话状态，确保切换后目标形态的输入区立即可用。
 
 ---
 
-#### A2.0 对话主窗口
+##### B1.2 真实模型回复
 
-##### A2.1 消息输入
+**B1_2_1 本机环境变量模型配置读取与脱敏保护**
 
-**A2_1_1 对话页输入区 DOM 与自适应高度文本域**
-- 状态：已完成
-- 需求描述：在对话页底部提供固定输入区，支持多行自动增高与最大高度内部滚动。
-- 详细方案设计：
-  1. 在 `Assistant/web/index.html` 的 `#view-chat` 底部增加 `.chat__composer`，内含排队提示 `<p class="composer__queue" id="composer-queue" hidden></p>`、表单 `<form class="composer" id="composer">`（包含 `<textarea class="composer__input" id="composer-input" rows="1" maxlength="4000">` 与 `<button class="composer__send" id="send-button" type="submit" disabled>`）以及快捷键提示 `.composer__hint`。
-  2. 在 `Assistant/web/css/chat.css` 设置 `.composer` 最大宽度 `860px` 居中，`--color-surface` 背景、`1px solid var(--color-border-strong)`、`16px` 圆角；`:focus-within` 时边框变为 `--color-primary` 并附加 `3px` `--color-primary-softer` 外圈。
-  3. 在 `Assistant/web/js/views/chat.js` 监听 `input` 事件，每次输入将 `textarea.style.height` 先设为 `'auto'`，再设为 `${Math.min(textarea.scrollHeight, 200)}px`，实现 1 行至 `200px` 自动伸缩。
+- 状态：已确认
+- 需求描述：在线形态回复由真实大模型生成，模型密钥仅通过本机环境变量读取，页面任何位置均无输入框、不展示密钥内容，离线形态不访问网络。
+-
+详细方案设计：
+1. 在 `Assistant/config.py` 中集中读取环境变量并向系统导出（常量名统一不带 `ASSISTANT_` 前缀）：2. `API_KEY = os.environ.get("ASSISTANT_API_KEY", "").strip()`；
+3. `BASE_URL = (os.environ.get("ASSISTANT_BASE_URL", "").strip().rstrip("/")) or "https://api.openai.com/v1"`（强制 `rstrip("/")` 防止拼接双斜杠）；
+4. `MODEL = os.environ.get("ASSISTANT_MODEL", "").strip() or "gpt-4o-mini"`；
+5. `REQUEST_TIMEOUT = _read_int_env("ASSISTANT_REQUEST_TIMEOUT", 60, min_value=5)`；
+6. `DB_PATH = Path(os.environ.get("ASSISTANT_DB_PATH", "").strip() or (Path(__file__).resolve().parent.parent / "data" / "emibot.db")).resolve()`；
+7. `HOST` 校验：若读取的 `ASSISTANT_HOST` 不在环回白名单 `("127.0.0.1", "localhost", "::1")` 内（例如被误设为 `0.0.0.0`），打印 warning 日志并强制回退至 `"127.0.0.1"`。
+8. 安全防御：9. 全站所有前端 HTML 模板、JavaScript 文件与静态样式中，绝对不包含任何 API Key 的输入框或配置展示；
+10. 服务端日志格式化脱敏：在网络请求模块中添加过滤器，屏蔽所有 `Authorization: Bearer ***` 请求头，禁止将密钥打印到终端控制台或日志文件；
+11. 服务端仅绑定本机环回地址，严禁配置 `allow_origins=["*"]` 通配跨域；同时在 `app.py` 中间件对 `/api/*` 的写请求（`POST` / `PATCH` / `DELETE`）校验 `Origin`（若存在）与 `Host` 请求头，仅放行 `127.0.0.1`、`localhost` 与 `[::1]`，非法来源直接返回 `403 Forbidden`，防止恶意网页跨站消耗本机模型额度；
+12. 离线形态完全不触发任何网络请求，保持断网可用。
 
-**A2_1_2 键盘快捷键与中文输入法组合保护**
-- 状态：已完成
-- 需求描述：实现 Enter 发送、Shift + Enter 换行，并拦截中文输入法候选词组合期间的 Enter 键。
-- 详细方案设计：
-  1. 在 `views/chat.js` 中维护布尔状态 `isComposing = false`，监听 `#composer-input` 的 `compositionstart`（设为 `true`）与 `compositionend`（设为 `false`）。
-  2. 监听 `#composer-input` 的 `keydown` 事件：当 `event.key === 'Enter' && !event.shiftKey` 时，若 `isComposing || event.isComposing` 为真则直接返回不处理；否则调用 `event.preventDefault()` 并触发消息提交流程。
+**B1_2_2 OpenAI 兼容协议异步大模型客户端封装（LLMClient）**
 
-##### A2.2 空白消息拦截
-
-**A2_2_1 发送按钮可用态联动与提交双重校验**
-- 状态：已完成
-- 需求描述：当输入框为空或仅含空白字符时禁用发送按钮，输入有效字符后立即启用。
-- 详细方案设计：
-  1. 在 `views/chat.js` 实现 `syncSendButtonState()`：读取 `composerInput.value.trim().length === 0`，据此设置 `sendButton.disabled`。
-  2. 在 `input` 事件与发送清空后均调用 `syncSendButtonState()`；在 `submit` 处理函数中再次校验 `const content = composerInput.value.trim()`，若为空则直接中止发送。
-  3. 在 `chat.css` 中设置 `.composer__send:disabled` 使用弱化背景与 `--color-text-muted` 图标，光标设为 `cursor: not-allowed`。
-
-##### A2.3 用户消息上屏
-
-**A2_3_1 立即追加用户消息并重置输入框**
-- 状态：已完成
-- 需求描述：点击发送或按 Enter 后，用户消息立即追加至消息列表末尾，同时清空输入框并保持输入焦点。
-- 详细方案设计：
-  1. 在 `Assistant/web/js/store.js` 实现 `addUserMessage(content)`：构造 `{ id, role: 'user', content, createdAt: new Date(), status: 'done' }` 推入 `store.messages` 并返回该对象。
-  2. 在 `views/chat.js` 的发送处理函数中：首次发送时设置 `#chat-empty.hidden = true`，调用 `appendMessageNode(userMsg)` 将气泡插入 `#messages`，随后将 `composerInput.value = ''`、重置高度为一行、调用 `syncSendButtonState()` 并执行 `composerInput.focus()`。
-
-##### A2.4 双方消息分列
-
-**A2_4_1 左右分列布局与差异化气泡样式**
-- 状态：已完成
-- 需求描述：用户消息靠右显示为主色淡底气泡，Agent 消息靠左显示为深色卡片气泡。
-- 详细方案设计：
-  1. 在 `views/chat.js` 渲染单条消息为 `<article class="msg msg--user|msg--agent" data-message-id="...">`，内部包含 `<div class="msg__bubble"><p class="msg__text"></p></div>` 与 `<time class="msg__time">`。
-  2. 在 `Assistant/web/css/chat.css` 中设置：
-     - `.msg--user`：`align-self: flex-end`、`align-items: flex-end`，最大宽度 `60%`（手机 `< 768px` 为 `82%`），`.msg__bubble` 使用 `--color-primary-soft` 背景、圆角 `16px 16px 4px 16px`、内边距 `10px 16px`。
-     - `.msg--agent`：`align-self: flex-start`、`align-items: flex-start`，最大宽度 `760px`（手机 `< 768px` 为 `92%`），`.msg__bubble` 使用 `--color-surface` 背景、`1px solid var(--color-border)`、圆角 `16px 16px 16px 4px`、内边距 `12px 16px`。
-  3. 消息正文统一通过 `textContent` 写入，`.msg__text` 设置 `white-space: pre-wrap; overflow-wrap: anywhere`。
-
-##### A2.5 消息顺序与滚动
-
-**A2_5_1 顺序追加与智能触底滚动控制**
-- 状态：已完成
-- 需求描述：消息严格按创建顺序追加；新消息上屏必滚到底部；流式输出期间若用户手动上滑查看历史则暂停自动跟随。
-- 详细方案设计：
-  1. 在 `views/chat.js` 维护布尔变量 `shouldAutoScroll = true`，监听滚动容器 `#chat-scroll` 的 `scroll` 事件，通过 `dom.js` 的 `isNearBottom(chatScrollEl, 80)` 实时更新 `shouldAutoScroll`。
-  2. 当用户发送新消息或新增 Agent 占位消息时，将 `shouldAutoScroll` 置为 `true` 并立即调用 `scrollToBottom(chatScrollEl)`（直接设置 `scrollTop = scrollHeight`，不使用 smooth 动画以防流式抖动）。
-  3. 在流式 `delta` 更新帧内，仅当 `shouldAutoScroll === true` 时才调用 `scrollToBottom(chatScrollEl)`。
-
-##### A2.6 时间戳
-
-**A2_6_1 本地时区格式化与气泡下方展示**
-- 状态：已完成
-- 需求描述：每条消息气泡下方展示 `YYYY-MM-DD HH:mm` 本地时间戳，不做相对时间与日期分隔线。
-- 详细方案设计：
-  1. 使用 `Assistant/web/js/dom.js` 已实现的 `formatTimestamp(dateInput)` 生成本地时间字符串 `YYYY-MM-DD HH:mm`，同时将 `<time class="msg__time">` 的 `datetime` 属性设为 `date.toISOString()`。
-  2. 用户消息取发送时刻的本地 `new Date()`；Agent 消息先取占位创建时刻，收到服务端 `meta.created_at` 后解析并更新 `<time>` 的 `datetime` 与显示文本。
-  3. 在 `chat.css` 中设置 `.msg__time` 位于气泡下方 `6px`，字号 `--text-xs`（`11px`），颜色 `--color-text-muted`，并启用 `font-variant-numeric: tabular-nums`。
-
-##### A2.7 头像
-
-**A2_7_1 无头像纯气泡卡片结构**
-- 状态：已完成
-- 需求描述：对话列表中不渲染用户或 Agent 头像，依靠对齐方向与卡片边框底色区分角色。
-- 详细方案设计：
-  1. `.msg` DOM 结构仅包含 `.msg__bubble` 与 `.msg__time` 两个直接子元素，不预留头像槽位或左侧缩进。
-  2. `.msg--agent .msg__bubble` 通过 `--color-surface` 背景色与 `1px solid var(--color-border)` 描边在 `--color-bg`（`#1a1a1a`）画布上形成清晰边界。
-
-##### A2.8 会话模型（已废弃）
-
-**A2_8_1 单一内存会话流与常驻视图（已废弃）**
-- 状态：已废弃
-- 需求描述：全应用仅维护单一对话流，不提供多会话列表，消息保存在浏览器内存中，刷新页面即清空。
-- 详细方案设计：
-  1. 在 `Assistant/web/js/store.js` 中定义单例状态（`messages: []`、`queue: []`、`isStreaming: false`），不读写 `localStorage`、`sessionStorage` 或 `IndexedDB`。
-  2. 页面首次加载或浏览器刷新时，`store.messages` 为空，`#chat-empty` 显示"开始和 Agent 对话"空状态；在应用内切换五项导航时，`#view-chat` 仅切换 `hidden` 属性，不销毁已渲染的消息节点。
-  3. 废弃说明：2026-11-06 由 A6.1 到 A6.11（A6_1_1 等实现子项）接替，改为多会话模型与会话列表管理（见 A6.0 子板块）。
-
-##### A2.9 回复期间可继续输入
-
-**A2_9_1 历史快照发送队列与串行流式调度**
-- 状态：已完成
-- 需求描述：Agent 流式回复期间不锁定输入框，新发送的用户消息立即上屏并进入先进先出队列依次请求回复。
-- 详细方案设计：
-  1. 用户每次发送消息时，立即将用户消息追加到 `store.messages` 并渲染上屏，同时截取截至该条用户消息的对话历史快照（仅含已完成的 `user` / `assistant` 消息，最多保留最近 30 条），推入 `store.queue`。
-  2. 在 `views/chat.js` 实现队列消费者 `processQueue()`：若 `store.isStreaming` 为 `true`，则更新 `#composer-queue` 提示文案为 `另有 ${store.queue.length} 条消息等待回复` 并显示；若 `store.isStreaming` 为 `false` 且队列非空，则取出队首快照开始一次新的 `POST /api/chat` 流式请求。
-  3. 当前流式请求结束（无论是 `done` 还是 `error`）时，在 `finally` 中调用 `processQueue()` 自动拉起下一条排队请求，队列清空后隐藏 `#composer-queue`。
+- 状态：已确认
+- 需求描述：在后端实现标准 OpenAI 兼容的异步流式 HTTP 客户端，向配置的服务商端点发起流式对话请求并解析分块数据。
+-
+详细方案设计：
+1. 新增 `Assistant/agent/llm_client.py`，实现 `LLMClient` 类；`Assistant/agent/online_agent.py` 作为外观实现 `Agent` 协议；
+2. 采用基于 `httpx.AsyncClient` 的标准异步网络通信：3. 请求地址为 `{BASE_URL}/chat/completions`，下发 JSON 数据体：`{ "model": MODEL, "messages": payload_messages, "stream": True }`；
+4. 请求头携带 `Authorization: f"Bearer {API_KEY}"` 与 `Content-Type: application/json`；
+5. 超时时间绑定 `config.REQUEST_TIMEOUT`；
+6. 流式解析器与异常映射：7. 使用 `client.stream("POST", ...)` 结合 `response.aiter_lines()` 逐行读取上游返回的 `data: {...}`；
+8. 反序列化提取 `choices[0].delta.content`；
+9. 当收到 `data: [DONE]` 时优雅结束异步生成器；
+10. 完整捕获异常并转换为 3.6 节标准错误码：`401/403` -> `AUTH_FAILED`，`429` -> `QUOTA_EXCEEDED`，其他 `4xx`（如 `400/404`）及 `5xx` -> `UPSTREAM_ERROR`，`httpx.TimeoutException` -> `TIMEOUT`，`httpx.RequestError`（含 `ConnectError`、`ReadError` 等网络中断）-> `NETWORK_ERROR`；
+11. 演进备注：本阶段无工具注册，`LLMClient` 直接 `yield str` 增量文本；后续阶段接入具体工具时，该生成器返回类型将演进为结构化流事件（`TextDelta | ToolCallChunk`）。
 
 ---
 
-#### A3.0 回复生成
+##### B1.3 多轮上下文
 
-##### A3.1 回复来源
+**B1_3_1 单会话上下文滑动窗口构建与消息过滤**
 
-**A3_1_1 本地确定性关键词匹配 Mock 生成器**
-- 状态：已完成
-- 需求描述：在后端提供无需外网与 API Key 的确定性 Mock 回复生成器，按固定关键词优先级返回纯文本回复。
-- 详细方案设计：
-  1. 新增 `Assistant/agent/mock_agent.py`，定义 `MockAgent` 类（`name = "mock"`，`model = "mock-0.1"`）。
-  2. 提取请求消息列表中最后一条 `role == "user"` 的文本（转小写后匹配），按以下固定顺序命中回复文案（纯文本、60~200 汉字、不含 Markdown 符号与 emoji）：
-     - 含 `你好` / `hello` / `hi`：问候并说明当前为本地 Mock 模式及可体验的对话能力。
-     - 含 `你是谁` / `介绍` / `名字`：说明自己是 Emibot，用于演示对话主流程与流式输出。
-     - 含 `学习` / `怎么学` / `agent`：给出三步学习建议（先跑通对话闭环、再理解工具调用、最后构建记忆）。
-     - 含 `数据库` / `记忆` / `笔记`：说明个人数据库与记忆模块将在后续版本开放。
-     - 其他输入：复述用户输入的核心内容，并追问一个具体的 Agent 学习问题。
+- 状态：已确认
+- 需求描述：同一会话内，模型调用时可参考该会话此前的全部历史消息；过滤失败消息并适配滑动窗口长度。
+-
+详细方案设计：
+1. 在 `Assistant/agent/online_agent.py` 中实现 `build_context_messages(session_id: str) -> list[ChatMessage]`：2. 从数据库 `messages` 表查询属于当前 `session_id` 的所有消息，SQL 严格绑定：`SELECT seq, id, role, content, status, error_code, created_at FROM messages WHERE session_id = ? ORDER BY seq ASC`，依靠自增 `seq` 保证绝对时序；
+3. 状态过滤与内容预处理：4. 跳过初始占位等空内容消息（`content.strip() == ""`）；
+5. 若存在 `status == 'interrupted'` 的消息，保留其已生成的 `content`，并在尾部追加标记说明 `[此条回复此前未完整生成]`；
+6. 完全忽略 `status == 'error'` 的异常卡片；
+7. 严格保证交叉序列算法：8. 过滤异常卡片后，若出现连续两条 `role == 'user'` 的消息（前一条用户消息因异常未获得有效回复），丢弃前一条无应答的 user 消息，确保维持 `user -> assistant -> user` 交叉序列；
+9. 窗口截取：
+10. 取末尾不超过 `MAX_MESSAGES`（30 条）消息作为上下文（注：本阶段仅按消息条数截断，暂不做字符或 Token 预算截断，留待后续阶段演进）；
+11. 截取后若第一条消息角色为 `assistant`，则丢弃该条，确保上下文第一条有效消息必须为用户消息，最后一条为当前新增的用户消息。
 
-##### A3.2 回复逻辑集中
+**B1_3_2 跨会话上下文绝对隔离机制**
 
-**A3_2_1 Agent 协议抽象与唯一工厂替换点**
-- 状态：已完成
-- 需求描述：定义统一的 `Agent` 协议并通过 `factory.py` 暴露唯一获取入口，使路由层与具体 Mock 实现解耦。
-- 详细方案设计：
-  1. 在 `Assistant/agent/base.py` 定义 `ChatMessage` 与 `Agent(Protocol)`（包含属性 `name: str` 与方法 `stream_reply(self, messages: Sequence[ChatMessage]) -> AsyncIterator[str]`）。
-  2. 在 `Assistant/agent/factory.py` 实现单例工厂函数 `get_agent() -> Agent`，内部实例化 `MockAgent()`；同时让 `Assistant/api/health.py` 改为通过 `get_agent().name` 返回当前 Agent 名称。
-  3. `Assistant/api/chat.py` 只导入 `get_agent` 与 `Agent` 协议，不直接导入 `MockAgent`；后续替换为真实大模型时仅需新增实现类并修改 `factory.py` 一行构造代码。
-
-##### A3.3 接口形态
-
-**A3_3_1 请求模型校验与 SSE 流式路由实现**
-- 状态：已完成
-- 需求描述：实现 `POST /api/chat` 路由，完成请求合法性校验并以 `text/event-stream` 按序推送 `meta`、`delta`、`done` / `error` 事件。
-- 详细方案设计：
-  1. 在 `Assistant/api/schemas.py` 定义 `ChatRequest(BaseModel)`：校验 `messages` 长度 `1..30`、每条 `content.strip()` 非空且长度 `<= 4000`、最后一条 `role == "user"`，违反时由 FastAPI 自动返回 `422`。
-  2. 在 `Assistant/api/chat.py` 实现 `POST /api/chat`：使用 `StreamingResponse` 包装异步生成器，首先发送 `event: meta`，随后遍历 `agent.stream_reply(req.messages)` 逐块发送 `event: delta`，完成后计算耗时发送 `event: done` 并打印统计日志 `messages=N last_user_chars=M reply_chars=K duration_ms=T`（不打印消息正文）。
-  3. 异常处理：捕获 `asyncio.CancelledError` 时记录 `logger.debug` 并安静退出；捕获其他异常时记录 `logger.exception` 并下发 `event: error` 事件。
+- 状态：已确认
+- 需求描述：不同会话之间的上下文相互绝对独立，严格杜绝会话间串话。
+-
+详细方案设计：
+1. 所有会话消息在数据库层面以 `session_id` 作为外键唯一归属；
+2. 上下文构建查询严格绑定 SQL 条件：`WHERE session_id = ? ORDER BY seq ASC`；
+3. 请求模型时仅传递该 SQL 查询产出的消息列表，严禁在后端全局内存中跨会话共享上下文缓存。
 
 ---
 
-#### A4.0 逐字输出
+##### B1.4 ReAct 结构
 
-##### A4.1 逐字显示
+**B1_4_1 ReAct 循环执行引擎设计**
 
-**A4_1_1 后端按字符切片与异步延时推送**
-- 状态：已完成
-- 需求描述：后端将完整回复按固定字符数切片并在块间异步等待，形成稳定的服务端流式推送节奏。
-- 详细方案设计：
-  1. 在 `MockAgent.stream_reply()` 中读取 `Assistant/config.py` 的 `CHUNK_SIZE`（默认 `1`）与 `STREAM_DELAY_MS`（默认 `20`）。
-  2. 首块直接 `yield`，后续每块前执行 `await asyncio.sleep(STREAM_DELAY_MS / 1000.0)`，确保首字节在 50ms 内发出、整条回复在 1~4 秒内平滑输出完毕。
+- 状态：已确认
+- 需求描述：回复生成组织为"推理—行动—观察"的循环结构，代码中可明确指认循环入口与动作分发点。
+-
+详细方案设计：
+1. 新增 `Assistant/agent/react.py`，实现 `ReActLoop` 引擎类；
+2. 引擎结构规定：3. 唯一循环入口：`async def run(self, messages: list[ChatMessage]) -> AsyncIterator[str]`；
+4. 内部维护 `step = 0; max_steps = 5;` 的循环计数；
+5. 动作分发点：`async def dispatch_action(self, tool_call: ToolCall) -> str`；
+6. 异常边界防护：7. 若模型循环步数达到 `max_steps` 仍未产出最终答案，抛出内部领域异常（映射为 3.6 节的 `INTERNAL_ERROR` 错误事件），安全终止生成并关闭流。
 
-**A4_1_2 前端 Fetch ReadableStream SSE 解析器**
-- 状态：已完成
-- 需求描述：前端使用 `fetch` + `ReadableStream` + `TextDecoder` 实时解析 `POST /api/chat` 返回的 SSE 事件流。
-- 详细方案设计：
-  1. 在 `Assistant/web/js/api.js` 实现 `streamChat({ messages, signal, onMeta, onDelta, onDone, onError })`。
-  2. 若响应 `!response.ok`，读取错误体并触发 `onError`；若为 `200`，通过 `response.body.getReader()` 循环读取字节流，使用 `TextDecoder('utf-8')` 解码并按 `\r?\n\r?\n` 切分完整事件块，提取 `event:` 与 `data:` 行后回调对应处理函数。
+**B1_4_2 无工具阶段 ReAct 纯回答闭环与流式防泄露**
 
-**A4_1_3 等待三点动画、闪烁光标与帧合并渲染**
-- 状态：已完成
-- 需求描述：流式请求发起后先显示三点等待动画，收到增量文本后逐字追加并显示闪烁光标，完成或报错时优雅收尾。
-- 详细方案设计：
-  1. 请求发起时插入 `.msg--agent.is-streaming` 节点，气泡内含 `.msg__waiting`（三个 6px 圆点透明度循环动画）与 `.msg__text`。
-  2. 收到首个 `delta` 时移除 `.msg__waiting`；使用 `requestAnimationFrame` 合并同一渲染帧内的多次 `delta` 文本追加，流式期间 `.msg--agent.is-streaming .msg__text::after` 显示 `2px` 宽的主色闪烁竖线光标。
-  3. 收到 `done` 时移除 `.is-streaming` 类（光标消失），更新消息状态为 `done`；若流开始前失败则将文本设为"连接失败，请确认后端服务正在运行。"，若流中途失败则保留已生成文本并追加弱化提示"回复生成中断，请重试。"，同时赋予 `.is-error` 样式。
+- 状态：已确认
+- 需求描述：第二阶段暂无任何可调用工具与技能，每次对话仅产生一次最终回答，对话过程中不产生工具调用记录，且严禁泄露内部推理过程。
+-
+详细方案设计：
+1. 系统提示词自适应（流式防泄露）：2. 当 `ToolRegistry.is_empty()` 为 `true` 时，系统提示词采用标准对话设定，**严禁要求模型输出 `Thought:` / `Final Answer:` 格式标记**，模型流式增量文本直接作为最终回答向订阅者推送，完全杜绝 Thought 思考文字提前上屏违反“不展示推理过程”规格；
+3. 动作分发旁路保护：4. 保留循环入口 `ReActLoop.run` 与动作分发点 `dispatch_action` 入口，当 `ToolRegistry.is_empty()` 时，循环只执行单次大模型流式推理；
+5. 后续接入具体工具时，基于 OpenAI 原生 `tools` 与 `tool_calls` 结构化参数交互，不依赖脆弱的文本正则解析；
+6. 数据库与前端消息卡片中仅存储最终回答文本，不落盘任何 Action 调用记录，满足验收无工具调用记录的规格。
 
 ---
 
-#### A5.0 工程与文档约定
+##### B1.5 工具与技能预留
 
-##### A5.1 Git 流程
+**B1_5_1 工具与技能抽象协议与注册中心预留**
 
-**A5_1_1 功能分支开发、No-FF 合并与远端即时同步**
 - 状态：已确认
-- 需求描述：严格执行 `feature/<name>` 分支开发、每次提交后推送远端、验收后 `--no-ff` 合并回 `main` 且保留已合并分支。
-- 详细方案设计：
-  1. 每个阶段从最新 `main` 切出对应功能分支（`feature/app-shell`、`feature/mock-agent`、`feature/chat-window`、`feature/first-release`）。
-  2. 每次提交完成后立即执行 `git push origin <branch>`；人工验收通过后切回 `main` 执行 `git merge --no-ff <branch>` 并推送 `origin/main`，不删除任何功能分支。
+- 需求描述：为后续工具与技能保留统一的注册与调用入口，新增工具只需注册即可进入对话链路，不改动对话主体。
+-
+详细方案设计：
+1. 在 `Assistant/agent/tools/base.py` 中定义抽象协议与模型：		class ToolCall(BaseModel):  
+id: str  
+name: str  
+arguments: dict  
 
-##### A5.2 提交信息
+class BaseTool(Protocol):  
+name: str  
+description: str  
+parameters: dict  # JSON Schema  
+async def execute(self, **kwargs) -> str: ...
+2. 在 `Assistant/agent/tools/registry.py` 中实现单例 `ToolRegistry`：3. 维护内部字典 `_tools: dict[str, BaseTool] = {}`；
+4. 提供 `register(tool: BaseTool)`、`get(name: str) -> BaseTool | None`、`list_tools() -> list[dict]` 与 `is_empty() -> bool`；
+5. 第二版初始状态保持注册中心完全为空，不注册任何工具实例。
 
-**A5_2_1 精准暂存、自审与 Conventional Commits 规范**
+**B1_5_2 界面零侵入与工具预留接口解耦**
+
 - 状态：已确认
-- 需求描述：提交信息遵循 `<type>(<scope>): <subject>` 格式，禁止盲目全量暂存，确保每次提交职责单一。
-- 详细方案设计：
-  1. 提交前固定执行 `git status -s` -> `git add <明确路径>` -> `git diff --cached` 逐行复核，严禁使用 `git add .` 或 `git add -A`。
-  2. Windows 环境下含中文的提交信息统一写入临时文件后通过 `git commit -F <file>` 提交，随后删除临时文件，防止终端编码破坏中文提交记录。
-
-##### A5.3 文档职责
-
-**A5_3_1 四份核心文档边界隔离**
-- 状态：已确认
-- 需求描述：`README.md`、`Intent.md`、`Spec.md`、`Memory.md` 各司其职，开头声明职责边界且全文不使用 emoji。
-- 详细方案设计：
-  1. `README.md` 仅保留简介、当前状态、运行方式、目录概览与文档导航；`Intent.md` 仅保留背景与目标、当前状态、需求列表（`A{x}.{y}`）；`Spec.md` 仅保留目录结构、架构、接口与数据规定、需求列表（`Ax_y_z`）；`Memory.md` 仅保留当前状态、已做决定及理由、踩过的坑、下一步。
-
-##### A5.4 文档同步
-
-**A5_4_1 规格先行与里程碑文档同步**
-- 状态：已确认
-- 需求描述：实现偏离规格时先更新 `Spec.md` 并在 `Memory.md` 记录原因，每个功能完成时同步更新文档。
-- 详细方案设计：
-  1. 任何接口、结构或交互调整必须先修改 `Spec.md` 对应 `Ax_y_z` 条目；废弃子项保留原 `Ax_y_z` 编号并标注 `状态：已废弃`。
-  2. 每个功能分支验收合并前，同步更新 `Spec.md` 中对应子项的状态为 `已完成`，并在 `Memory.md` 更新当前进度与下一步计划。
-
-##### A5.5 分工
-
-**A5_5_1 需求验收与代码实现角色分离**
-- 状态：已确认
-- 需求描述：主 Agent 负责需求维护与人工验收清单核对，实现方 Agent 按 `Spec.md` 编写代码与自测。
-- 详细方案设计：
-  1. 实现方严格依据 `Spec.md` 中的 `Ax_y_z` 方案编写代码并执行命令行接口与静态资源冒烟验证。
-  2. 每个功能分支完成后交由 Fibel / 主 Agent 依据 `Intent.md` 的验收标准逐条核验，确认通过后方可执行分支合并。
+- 需求描述：本阶段前端界面上不出现任何工具或技能相关入口、开关与提示，对话主体与注册表状态松耦合。
+-
+详细方案设计：
+1. 前端 HTML / CSS / JS 完全不引入与工具、插件、插件市场或技能配置相关的 DOM 元素、图标或状态显示；
+2. `ReActLoop` 仅依赖 `ToolRegistry` 提供的公共方法查询工具，当列表为空时平滑旁路动作分发，保证后续接入工具时对话主干代码无需重构。
 
 ---
 
-#### A6.0 会话列表
+##### B1.6 错误提示
 
-##### A6.1 多会话模型
+**B1_6_1 模型调用异常分类诊断与中文友好错误映射**
 
-**A6_1_1 会话数据结构与多会话内存管理**
 - 状态：已确认
-- 需求描述：对话页支持多个会话，每个会话独立保存自身的消息列表；切换会话只切换显示内容，各会话已产生的消息不丢失、不串扰；会话与消息只存在于内存，刷新页面后清空。
-- 详细方案设计：
-  1. 在 `Assistant/web/js/store.js` 重构状态树，从单一消息列表升级为多会话状态结构：
-     - `sessions`: 会话对象数组，每个会话结构为 `{ id: 's_<timestamp>_<rand>', title: string, createdAt: Date, updatedAt: Date, messages: [], draft: '' }`，按创建或最近活跃时间倒序排列。
-     - `activeSessionId`: 当前处于活跃状态的会话 ID，取值为 `string` 或 `null`（`null` 表示当前处于未创建的空白草稿态）。
-     - `draftText`: 处于空白草稿态时已输入但尚未发送的文字。
-     - `queue`: 全局发送队列，元素为 `{ sessionId: string, messageId: string, snapshot: Array }`。
-     - `isStreaming`: 全局流式互斥锁，表示当前是否有网络请求在持续推送中。
-     - `currentAbortController`: 当前活跃的 `AbortController` 实例，供跨会话控制与删除中止。
-  2. 导出多会话操作函数：`getSessions()`、`getActiveSessionId()`、`getActiveSession()`、`switchSession(sessionId)`、`getActiveMessages()`；所有数据只保留在 JavaScript 运行时内存，不读写 `localStorage`、`sessionStorage` 或 `IndexedDB`。
+- 需求描述：在线形态下模型调用失败（未配置密钥、鉴权失败、网络中断、请求超时、服务端错误）时，在对话区给出可读的中文提示。
+-
+详细方案设计：
+1. 服务端统一异常分类与错误码映射表：严格遵循 **3.6 全局错误码与提示文案映射表** 作为唯一事实来源；
+2. SSE 错误事件：当异常发生时，下发 `event: error\ndata: {"code": "<ERROR_CODE>", "message": "<官方中文文案>"}\n\n`。
 
-**A6_1_2 切换会话的消息区重绘与流式动态重绑定**
+**B1_6_2 对话区异常上屏与历史消息安全保留**
+
 - 状态：已确认
-- 需求描述：用户在会话列表点击切换会话时，消息区立即清空并完整重新渲染目标会话的消息列表与空状态；若流式期间切换会话，多会话之间请求排队串行调度，切走再切回视图全量重绘时能无缝恢复流式节点追加，各会话消息与顺序互不干扰。
-- 详细方案设计：
-  1. 在 `Assistant/web/js/views/chat.js` 实现 `renderActiveSession()`：
-     - 首先清空当前 `#messages` 容器（`messagesEl.replaceChildren()`）；
-     - 若当前处于空白草稿态（`activeSessionId === null`）或当前会话的 `messages` 为空数组，展示 `#chat-empty` 空状态提示；
-     - 若当前会话存在消息，隐藏 `#chat-empty`，遍历该会话的 `messages` 数组，依次调用 `appendMessageNode()` 将用户气泡与 Agent 消息卡片按序渲染至 `#messages`；若其中有消息状态为 `streaming`，卡片赋予 `.is-streaming` 并渲染等待点动画与打字光标；
-     - 渲染完成后调用 `scrollToBottom(chatScrollEl)` 使视图滚至最新消息。
-  2. 流式与并发排队调度策略：
-     - `isStreaming` 与 `queue` 保持全局统一调度。若会话 A 正在流式输出中，用户切至会话 B 或在草稿态发送消息，新发送的消息立即在对应会话中上屏，内存中生成状态为 `streaming` 的 Agent 占位卡片，并将请求快照 `{ sessionId, messageId, snapshot }` 推入全局队列；输入框上方展示排队等待提示；
-     - 当前请求完成（`done` 或 `error`）后，`processQueue()` 自动出队下一项并启动网络请求。
-  3. 切走再切回的 DOM 节点重绑定机制：
-     - 杜绝视图模块内部使用局部闭包变量长期持有 Agent DOM 节点；
-     - 每次收到 SSE `delta` 增量事件时：
-       a. 首先无条件更新内存对象：找到对应会话的消息对象，执行 `message.content += delta`；
-       b. 判断当前活动会话：若 `store.getActiveSessionId() === currentStreamingSessionId`（用户正在查看该会话），通过 `messagesEl.querySelector(\`[data-message-id="${messageId}"]\`)\` 动态获取当前 DOM 树上的 Agent 卡片节点并更新文本（使用 `textContent`）与智能触底滚动；
-       c. 若用户切到其他会话，DOM 查找直接跳过，只保留内存累加；当用户重新切回该会话时，`renderActiveSession()` 执行全量重绘，新生成的卡片同样具备 `data-message-id="${messageId}"`，后续到达的 `delta` 片段将立刻定位到新生成的 DOM 节点继续渲染，彻底解决重绘导致的节点失效脱节问题。
+- 需求描述：发生异常时不白屏、不静默失败、不自动改用 mock，且已经显示的消息与历史记录完好保留。
+-
+详细方案设计：
+1. 服务端持久化错误码与统一文案返回：发生异常时，服务端将错误码记录在 `messages.error_code` 列，消息状态标记为 `status = 'error'`；在 `GET /api/sessions/{session_id}/messages` 查询返回时，服务端统一根据 `error_code` 查 3.6 节映射表填充 `error_message` 字段；
+2. 前端接收到实时 SSE `error` 事件时：3. 若当前已有部分文字流式上屏：保留已有文本，在其后方换行追加 `.msg__error-tip`（弱警告色背景卡片），渲染事件携带的 `message` 官方中文提示文案；
+4. 若尚未有任何文字上屏（在等待阶段报错）：将 Agent 消息气泡内容替换为错误提示文案，并赋予 `.msg--agent.is-error` 样式；
+5. 刷新页面恢复回显：前端拉取历史消息时，对 `status === 'error'` 的消息，直接读取服务端返回的 `error_message` 字段渲染中文错误提示卡片（前端无需重复维护错误码映射表），确保刷新后错误提示不丢失；
+6. 严格禁止自动降级回退到 mock 回复，确保错误态真实可感知。
 
-##### A6.2 对话页导航折叠
+---
 
-**A6_2_1 主导航对话页缩略态与路由响应式联动**
+##### B1.7 本地持久化（在线形态）
+
+**B1_7_1 SQLite 数据库初始化与数据模式定义**
+
 - 状态：已确认
-- 需求描述：进入对话页（`#/chat`）时，左侧主导航收为缩略形态，只显示五个入口的图标、不显示文字；切到个人数据库、管理 Mail、手机端联动、配置任一页面时，主导航恢复展开为图标加文字。
-- 详细方案设计：
-  1. 在 `Assistant/web/js/router.js` 的 `syncRoute()` 中判定当前路由视图：
-     - 若 `route.view === 'chat'`，为 `.app-sidebar` 添加 `.app-sidebar--collapsed` 类；
-     - 若 `route.view !== 'chat'`，从 `.app-sidebar` 移除 `.app-sidebar--collapsed` 类。
-  2. 在 `Assistant/web/css/layout.css` 编写折叠态样式：
-     - `.app-sidebar--collapsed` 宽度覆盖为 `var(--layout-sidebar-compact)`（`72px`）；
-     - `.app-sidebar--collapsed .nav__label` 与 `.app-sidebar--collapsed .app-sidebar__footer-text` 采用隐藏样式（`position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;`），隐藏文字同时保留语义供无障碍设备读取；
-     - `.app-sidebar--collapsed .nav__link` 采用居中布局（`justify-content: center; padding: 0;`），保留原有 `title` 属性用于鼠标悬停提示；五个导航入口的点击跳转与激活态逻辑完全保持不变。
-  3. 平板断点（`max-width: 1023px`）与手机断点（`max-width: 767px`）下，原有断点样式保证侧栏始终收缩为紧凑图标栏，两者规则协调一致。
+- 需求描述：在线形态的会话与消息保存在本机 SQLite 数据库，刷新页面、重启服务后仍可读取，关闭浏览器不丢失。
+-
+详细方案设计：
+1. 新增 `Assistant/storage/db.py`，采用\*\*应用级单一共享长连接（Single Shared `aiosqlite.Connection`）\*\*方案：2. 在服务启动时自动检查并在项目根目录下建立 `data/` 目录；
+3. 启动打开连接后一次性执行：`PRAGMA journal_mode = WAL;`（开启读写并发）、`PRAGMA foreign_keys = ON;`（开启外键级联清理）、`PRAGMA busy_timeout = 5000;`（防写锁繁忙报错）；
+4. 自动执行建表迁移：创建包含自增序号 `seq` 与 `error_code` 的 `messages` 表、`sessions` 表与 `generation_tasks` 表（严格对齐 3.7 规范）；
+5. 连接生命周期：利用 FastAPI `lifespan` 上下文管理器在应用启动时初始化单一长连接并执行未完任务恢复扫描；在应用关闭（shutdown）时，先等待 `TaskManager` 完成所有运行中任务的取消与落盘，最后安全关闭数据库连接。
 
-##### A6.3 会话列表栏
+**B1_7_2 在线会话与消息持久化 CRUD 仓储层实现与节流写盘**
 
-**A6_3_1 对话页双列结构与会话列表栏布局**
 - 状态：已确认
-- 需求描述：在缩略导航栏右侧紧邻出现第二列会话列表栏，只在对话页显示；栏内自上而下为顶部操作区与会话列表滚动区。
-- 详细方案设计：
-  1. 在 `Assistant/web/index.html` 的 `#view-chat` 内部搭建水平双列结构：
-     - 左列为会话列表栏 `<aside class="chat-sessions" id="chat-sessions" aria-label="会话列表">`；
-     - 右列为主对话区 `<div class="chat" id="chat-main">`。
-  2. 在 `Assistant/web/css/chat.css` 中声明布局规格：
-     - `.view--chat` 设为 `flex-direction: row; height: 100%; width: 100%; max-width: 100%; padding: 0; margin: 0;`；
-     - `.chat-sessions` 宽度固定为 `240px`（`var(--layout-session-width, 240px)`），`flex-shrink: 0`，背景色为 `--color-surface`，右边缘使用 `1px solid var(--color-border-sidebar)`；
-     - `.chat-sessions` 内部垂直分为固定高度顶部操作区 `.chat-sessions__header` 与下方弹性滚动区 `.chat-sessions__list`（`flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;`）；
-     - 右侧 `.chat` 主体保持 `flex: 1; min-width: 0; display: flex; flex-direction: column;`。
-  3. 切换到其他非对话页面时，由于外层 `#view-chat` 带有 `hidden` 属性，会话列表栏随之隐藏，其他页面占位区不受任何影响。
+- 需求描述：实现会话增删改查、消息追加与状态维护的异步仓储层，保证数据持久化一致性与高并发 I/O 稳定。
+-
+详细方案设计：
+1. 新增 `Assistant/storage/session_store.py`，实现 `SessionStore`（内部持有 `_write_lock = asyncio.Lock()` 串行化所有写事务）：2. `create_session(session_id, title) -> dict`：插入 `sessions` 表并返回会话字典；
+3. `get_sessions() -> list[dict]`：查询所有在线会话，按 `updated_at DESC` 排序；
+4. `get_session(session_id) -> dict | None`：查询单个会话是否存在；
+5. `rename_session(session_id, new_title) -> dict | None`：更新会话标题与 `updated_at` 并返回更新后对象；
+6. `delete_session(session_id) -> bool`：删除会话记录（依靠外键级联清理 `messages` 与 `generation_tasks`）；
+7. `get_messages(session_id) -> list[dict]`：按 `seq ASC` 升序返回指定会话的所有消息，并根据 `error_code` 自动映射填充 `error_message`；
+8. `create_turn_and_task(session_id, user_msg_id, user_content, assistant_msg_id, task_id) -> dict`：在单次写事务中原子插入用户消息（`status='done'`）、助手初始占位消息（`status='streaming'`）、`generation_tasks` 记录（`status='running'`），并刷新会话 `updated_at`；
+9. `update_message_stream(message_id, content)`：流式生成期间节流更新助手消息已生成文本；
+10. `finalize_generation(task_id, message_id, content, message_status, task_status, error_code=None)`：生成结束/中断/失败时在单次写事务中原子更新 `messages`（最终文本、`status`、`error_code`）、`generation_tasks`（`status`、`updated_at`）及会话 `updated_at`；
+11. `recover_interrupted_tasks() -> int`：服务启动时扫描并将所有残留的 `status='streaming'` 消息与 `status='running'` 任务统一更新为 `'interrupted'`；
+12. 流式节流写盘保护：流式生成期间每 300ms 或累计若干 chunk 通过 `update_message_stream` 异步刷盘一次；在生成完成（`done`）、中断（`interrupted`）或失败（`error`）时，必须先 `await finalize_generation(...)` 完成最终落盘，随后再向订阅者广播终态事件。
 
-##### A6.4 新建对话
+**B1_7_3 差异化存储隔离**
 
-**A6_4_1 延迟创建机制与新建草稿态流转**
 - 状态：已确认
-- 需求描述：会话列表栏顶部提供"新建对话"按钮，点击后进入一个空白草稿会话，可直接输入；草稿在发出第一条用户消息之前不出现在会话列表中，发出第一条消息后才正式创建并加入列表；首次打开应用或点击"新建对话"时落在空白草稿上，不自动打开已有会话。
-- 详细方案设计：
-  1. 在 `.chat-sessions__header` 中提供新建对话按钮 `<button class="chat-sessions__new-btn" id="new-chat-button" type="button"><svg class="chat-sessions__new-icon" viewBox="0 0 24 24"><use href="#icon-plus"></use></svg><span>新建对话</span></button>`。
-  2. 在 `Assistant/web/index.html` 的内联 SVG sprite 中增加 `icon-plus` symbol。
-  3. 页面初次加载或用户点击"新建对话"按钮时触发 `handleNewChat()`：
-     - 若当前已处于空白草稿态（`activeSessionId === null`）：判定为丢弃旧草稿，调用 `store.clearDraftText()`，输入框清空，高度重置，禁用发送按钮；
-     - 若当前处于某一既有会话（`activeSessionId !== null`）：调用 `store.enterDraft()`，将 `activeSessionId` 设为 `null`；此时输入框回填此前暂存的 `store.draftText`（若有）并恢复发送按钮可用态；
-     - 清空 `#messages` 容器并显示 `#chat-empty`，会话列表中所有条目均移除 `.is-active` 激活态；
-     - 自动调用 `composerInputEl.focus()` 保持焦点就绪。
-  4. 用户在草稿态发出第一条消息时，调用 `store.createSessionFromDraft(content)`：
-     - 生成唯一 ID（`s_<timestamp>_<rand>`）；
-     - 自动截取首条消息前 10 字为标题（按 A6.5 码点与空白安全算法）；
-     - 将新会话推入 `store.sessions` 列表最前；
-     - 将 `activeSessionId` 设为该会话 ID；
-     - 触发会话列表重新渲染并将该新会话置为激活高亮状态，随后将首条用户消息放入该会话并进入正常发送与回复流程。
+- 需求描述：在线形态持久化至磁盘，离线形态仅在内存保留；未发送的草稿输入文字不持久化，仍按既有规则在页面内维护。
+-
+详细方案设计：
+1. 存储路由分流：离线形态下发送的消息绝不写入 SQLite 数据库，刷新页面后按 A6.1 全部清空；在线形态下的增删改查全量走持久化 API；
+2. 草稿文字处理：未发送的草稿文本（无论是在线草稿还是离线草稿）均只保留在前端 `store.js` 内存中，完全不落库，页面刷新后输入框重置为空白草稿，严格符合 B1.7 规定。
 
-##### A6.5 会话标题自动生成
+---
 
-**A6_5_1 码点安全切片与空白折叠生成算法**
+##### B1.8 生成与页面解耦
+
+**B1_8_1 后端异步生成任务管理器与多会话并发架构**
+
 - 状态：已确认
-- 需求描述：会话在发出第一条用户消息时正式创建，标题自动取该条消息的前 10 个字；标题在会话出现在列表时即已生成；消息不足 10 个字时标题与消息全文一致；杜绝多行与 emoji 乱码，防御 XSS。
-- 详细方案设计：
-  1. 在 `store.js` 的 `createSessionFromDraft(firstUserContent)` 中实现字符感知截取算法：
-     - 过滤与折叠空白：`const folded = firstUserContent.trim().replace(/\s+/g, ' ');`；将换行符、回车符、制表符及多个连续空格统一收敛为一个半角空格，防止多行文本破坏会话条目单行样式；
-     - Unicode 码点感知切片：`const title = Array.from(folded).slice(0, 10).join('');`；严格按字符感知单元截取，杜绝原生 JavaScript `slice(0, 10)` 在 UTF-16 代理对（如 emoji 表情）中间切断导致的乱码与字符畸变；不足 10 字时保留全部文本。
-  2. 安全 DOM 渲染：新会话节点插入会话列表 DOM 时，必须使用 `element.textContent = title` 赋值，严禁使用 `innerHTML`，彻底杜绝用户输入构造恶意标签导致的 XSS 注入隐患；同时将完整 `folded` 赋给 `title` HTML 属性供长文本悬停查阅。
+- 需求描述：在线形态下发出的消息在后台持续生成直至完成；不同会话支持同时生成，互不阻塞。
+-
+详细方案设计：
+1. 新增 `Assistant/agent/task_manager.py`，定义 `TaskManager` 全局单例；
+2. 任务结构：		class GenerationTask:  
+task_id: str  
+session_id: str  
+message_id: str  
+asyncio_task: asyncio.Task  
+chunk_buffer: list[str]       # 已产生的增量文本缓存  
+subscribers: set[asyncio.Queue] # 正在监听该任务的客户端连接  
+status: Literal["running", "completed", "interrupted", "failed"]
+3. 并发度与防竞态设计：4. 单一会话严格串行与同步占位：在 `POST /api/sessions/{id}/messages` 进入异步写库前，先在同一个同步执行段内检查并占用该 `session_id` 的运行槽位；若该会话已有任务处于 `running` 或占位状态，立即返回 `409 Conflict`；
+5. 跨会话并发独立：每个会话在生成时独立启动 `asyncio.create_task(...)`，会话 A 与会话 B 各自拥有独立的协程与状态，实现真正的多会话并发生成、互不等待；
+6. 终态与取消收尾契约：7. 任务正常完成、抛错或收到 `asyncio.CancelledError` 时，严格按 **① 调用 `session_store.finalize_generation` 强制刷盘并更新状态 → ② 向所有 `subscribers` 队列推入 `done` 或 `error` 终态事件 → ③ 从活跃任务字典移除该会话任务** 的顺序执行；
+8. 捕获 `asyncio.CancelledError` 完成上述收尾落盘后，**必须重新 `raise`**，符合 Python `asyncio` 协程取消规范；
+9. 提供 `cancel_and_wait(session_id)` 供 `POST /api/chat/abort` 与 `DELETE /api/sessions/{id}` 调用，确保任务彻底结束落盘后再返回或执行会话删除。
 
-##### A6.6 会话重命名
+**B1_8_2 会话级解耦 SSE 订阅与前端切页/切会话无缝重连**
 
-**A6_6_1 悬停快捷入口与行内编辑事件保护**
 - 状态：已确认
-- 需求描述：鼠标悬停在会话条目上时显示重命名入口，点击后可编辑标题并保存，列表与当前会话标题同步更新；自动标题先于重命名发生，重命名结果不会被后续消息覆盖；严格拦截事件冒泡、中文选字回车误触、失焦重复提交与列表重绘冲突。
-- 详细方案设计：
-  1. 在 `Assistant/web/index.html` 的内联 SVG sprite 中增加 `icon-pencil` 线性编辑图标 symbol。
-  2. 在每个会话条目 DOM 中构建操作按钮组 `<div class="session-item__actions">`，内含 `<button class="session-item__action-btn" data-action="rename" title="重命名" aria-label="重命名会话"><svg viewBox="0 0 24 24"><use href="#icon-pencil"></use></svg></button>`。
-  3. 悬停交互：在 `chat.css` 中设置 `.session-item__actions` 默认 `opacity: 0`；当 `.session-item:hover` 或 `.session-item:focus-within` 时 `opacity: 1`。
-  4. 点击重命名按钮时调用 `event.stopPropagation()`，条目进入编辑态：
-     - 为 `.session-item` 增加 `.is-editing` 类；条目内包含标记变量 `let isCommitted = false;` 与组合状态 `let isInputComposing = false;`；
-     - 隐藏原有的 `.session-item__title` 与操作组，原地插入单行文本框 `<input class="session-item__input" type="text" maxlength="50">`；
-     - 输入框必须绑定 `click` 事件并调用 `event.stopPropagation()`，防止点击输入框时事件冒泡到外层条目触发会话切换；
-     - 输入框初始值为当前标题文本，自动执行 `input.focus()` 与 `input.select()`。
-  5. 事件保护与提交逻辑：
-     - 组合输入法保护：监听输入框 `compositionstart`（置 `isInputComposing = true`）与 `compositionend`（置 `isInputComposing = false`）；
-     - 键盘事件：监听 `keydown`：
-       a. 若按 `Enter`：若 `isInputComposing || event.isComposing` 为真则直接返回，防止输入法确认拼音时误保存；若非组合输入，设置 `isCommitted = true`，调用保存流程并退出编辑；
-       b. 若按 `Esc`：设置 `isCommitted = true`，恢复原标题并退出编辑；
-     - 失焦保护：监听输入框 `blur`：若 `isCommitted` 为 `true`，说明此前已通过 Enter 或 Esc 完成处理，直接 return；若为 `false`，则将其置为 `true` 并执行保存流程；
-     - 保存处理：读取 `input.value.trim().replace(/\s+/g, ' ')`，若非空且与原标题不同，调用 `store.renameSession(sessionId, newTitle)`，并使用 `titleSpan.textContent = newTitle` 安全更新 DOM；若为空串则取消本次修改并恢复原标题；
-     - 退出编辑态，移除 `.is-editing`，销毁输入框并重新显示标题与操作组。
-  6. 列表重排防丢失保护：若在编辑态期间有后台流式完成或数据更新，会话列表控制器禁止对会话列表执行全局 `replaceChildren` 全量重建，保持当前编辑中的 input 节点完整稳定。
+- 需求描述：用户在生成期间切换会话、切到其他导航页或刷新页面，后台继续生成；返回时若已完成则展示完整内容，若仍在生成中则显示"正在生成"并自动更新补齐。
+-
+详细方案设计：
+1. 客户端切走逻辑：2. 用户在流式期间切换到其他会话或切换至其他路由：前端调用 `store.streamingBySession[sessionId].abortController.abort()` 关闭该会话专属的 fetch SSE 订阅连接，并执行 `delete store.streamingBySession[sessionId]`；服务端的后台生成任务检测到订阅者离开，仅从 `subscribers` 移除该客户端队列，**生成协程绝不 cancel，继续全速运行并节流写入数据库**；
+3. 客户端切回/刷新恢复逻辑：4. 用户返回该会话或刷新后重新进入该会话：5. 前端调用 `GET /api/sessions/{session_id}/messages` 拉取消息列表；
+6. 若最新一条 Agent 消息状态为 `"done"` 或 `"interrupted"` 或 `"error"`，直接渲染完整内容（`error` 状态直接渲染消息中的 `error_message`）；
+7. 若最新一条 Agent 消息状态仍为 `"streaming"`：前端新建 `AbortController` 登记至 `store.streamingBySession[sessionId]`，将该气泡文本先清空置为等待态，并立即发起 `GET /api/chat/stream?session_id={session_id}`；
+8. 服务端无任务竞态兜底：若连接到达时任务恰好已执行完毕，服务端立即推送 `done`（或 `error`）事件并关闭连接，前端收到后清理 `streamingBySession[sessionId]` 并重新拉取渲染最终消息；
+9. 服务端追赶与广播：若任务正在执行，服务端在同步段内绑定订阅队列并先将 `chunk_buffer` 中积累的文本一次性推送给客户端完成追赶，随后继续实时广播后续增量，直至下发 `done` 事件完成。
 
-##### A6.7 会话删除
+**B1_8_3 停服与异常崩溃中断标记与恢复处理**
 
-**A6_7_1 悬停删除入口、流式中止与状态复位保护**
 - 状态：已确认
-- 需求描述：鼠标悬停在会话条目上时显示删除入口，触发后删除该会话及其全部消息；若删除正在流式的会话，中止网络连接并复位状态防止死锁；若删除当前正在查看的会话，页面落回空白草稿会话。
-- 详细方案设计：
-  1. 在 `Assistant/web/index.html` 的内联 SVG sprite 中增加 `icon-trash` 垃圾桶线性图标 symbol。
-  2. 在会话条目的 `.session-item__actions` 内增加删除按钮 `<button class="session-item__action-btn" data-action="delete" title="删除会话" aria-label="删除会话"><svg viewBox="0 0 24 24"><use href="#icon-trash"></use></svg></button>`。
-  3. 点击删除按钮时调用 `event.stopPropagation()`，在 `views/chat.js` 中触发会话删除流程：
-     - 流式中止与死锁保护：检查当前全局状态，若当前 `store.isStreaming` 为 `true` 且正在流式处理的请求属于目标被删除会话：
-       a. 立即调用 `store.currentAbortController.abort()` 中止底层 fetch SSE 数据流；
-       b. 将 `store.isStreaming` 立即置为 `false`，清空 `store.currentAbortController = null`；
-       c. 调用 `syncSendButtonState()` 强制刷新发送按钮可用态，杜绝因连接中途销毁导致的按钮永久禁用死锁；
-     - 队列清理：过滤清理 `store.queue` 中所有 `sessionId === targetId` 的排队项；
-     - 内存与视图移除：调用 `store.deleteSession(sessionId)` 从 `store.sessions` 中移除该会话；从会话列表 DOM 容器中移除对应的 `.session-item` 节点；
-     - 活动会话落回草稿态：若被删除的会话正好是当前活动会话（`sessionId === store.getActiveSessionId()`）：
-       a. 调用 `store.enterDraft()` 将 `activeSessionId` 重置为 `null`；
-       b. 清空输入框（`composerInputEl.value = ''`），重置高度并禁用发送按钮；
-       c. 清空 `#messages` 容器并显示 `#chat-empty` 空状态；
-       d. 不自动切换或打开会话列表中的其他既有会话；
-     - 若队列中仍有属于其他未删除会话的排队请求，在中止清理后继续调用 `processQueue()` 调度下一条。
+- 需求描述：服务被关闭或崩溃导致回复未完成时，已生成部分保留并标记"已中断"，不自动重试，用户可手动再次发送。
+-
+详细方案设计：
+1. 优雅停服（Graceful Shutdown）与启动补偿扫描（Recovery on Startup）：2. 在 `Assistant/app.py` 的 `lifespan` 关闭阶段（shutdown）：调用 `await task_manager.shutdown()` 取消所有运行中的生成任务，等待各任务将已生成部分刷入数据库并标记为 `'interrupted'`、向所有活跃 SSE 订阅者下发终止事件关闭连接后，再关闭 SQLite 连接，确保服务快速干净退出；
+3. 在 `Assistant/app.py` 的 `lifespan` 启动阶段（startup）：针对断电或进程被强杀等未走优雅停服的场景，调用 `await session_store.recover_interrupted_tasks()`；
+4. 执行 SQL 补偿：`UPDATE messages SET status = 'interrupted' WHERE status = 'streaming'` 以及 `UPDATE generation_tasks SET status = 'interrupted', updated_at = ? WHERE status = 'running'`；
+5. 前端展示与用户重发：6. 对状态为 `"interrupted"` 的消息，气泡底部或末尾展示徽标 `<span class="badge badge--interrupted">已中断</span>`；
+7. 气泡文本保持显示此前已经成功落盘的部分内容；
+8. 系统不执行任何静默自动重试，输入框保持就绪状态，用户可选择手动再次发送新消息。
 
-##### A6.8 顶部预留区
+---
 
-**A6_8_1 会话栏顶部扩展区结构预留**
+##### B1.9 会话列表沿用
+
+**B1_9_1 会话列表生命周期操作在持久化层的适配沿用**
+
 - 状态：已确认
-- 需求描述：会话列表栏顶部在"新建对话"按钮所在区域内预留一块空白区域，供后续新增的同类模块入口使用；第一版该区域不放任何控件，不挤占会话列表的滚动区域。
-- 详细方案设计：
-  1. 在 `Assistant/web/index.html` 的 `.chat-sessions__header` 内部增加预留容器：`<div class="chat-sessions__reserved" id="chat-sessions-reserved" aria-hidden="true"></div>`。
-  2. 在 `Assistant/web/css/chat.css` 中为 `.chat-sessions__reserved` 定义弹性预留空间：
-     - 高度保持为紧凑预留（`min-height: 8px` 或空块容器），内容为空；
-     - 不包含任何按钮、图标、表单或文字；
-     - 设置 `pointer-events: none`，确保不捕获任何鼠标事件；
-     - 该预留区置于顶部固定栏 `.chat-sessions__header` 内，下方会话列表单独滚动，杜绝挤占或遮挡会话条目滚动区域。
+- 需求描述：会话的新建、切换、重命名、删除、自动标题生成等生命周期逻辑，在双形态下完全沿用 A6.2 到 A6.11 规范。
+-
+详细方案设计：
+1. 新建对话：在线形态同样采用"延迟创建草稿态"（A6.4）；点击"新建对话"仅进入空白草稿态，只有在用户成功发出首条消息后，才调用 `POST /api/sessions` 正式落库并进入列表；
+2. 自动标题：首条消息发出时，依然严格采用 A6.5 算法（空白折叠与 Unicode 10 字符感知切片截取），落库并展示在列表；
+3. 行内重命名：保留悬停笔图标、行内 input 编辑、防失焦重复提交与输入法组合保护（A6.6），保存时调用 `PATCH /api/sessions/{id}` 同步更新本地数据库；
+4. 删除会话：保留悬停垃圾桶图标（A6.7），点击后调用 `DELETE /api/sessions/{id}` 同步清除本地持久化，当前会话被删后同样安全回退至空白草稿态。
 
-##### A6.9 草稿输入保留
+**B1_9_2 全会话未发送草稿在双形态下的统一页面内存管理**
 
-**A6_9_1 空白草稿未发送文字输入即存与跨路由保留**
 - 状态：已确认
-- 需求描述：在空白草稿会话的输入框中已输入但尚未发送的文字，在离开对话页（切到个人数据库、管理 Mail、手机端联动、配置任一页面）后返回时仍然保留，返回后可直接继续编辑或发送。
-- 详细方案设计：
-  1. 采用统一的输入即存机制：在空白草稿态（`activeSessionId === null`）下，用户在 `composerInputEl` 中键入任意文字，`input` 事件触发时立即执行 `store.draftText = composerInputEl.value`，无延迟暂存。
-  2. 前端路由采用常驻 DOM 方案：切换到其他非对话路由时，`#view-chat` 仅设置 `hidden = true`，DOM 实例与输入框内容完整保留在浏览器内存中；切回 `#/chat` 时，`#view-chat` 重新可见，输入框文字自然完好如初。
-  3. 路由重置或视图重新激活时，从 `store.draftText` 读取草稿文字核对并回填输入框，调用 `adjustInputHeight()` 恢复文本框伸缩高度，并调用 `syncSendButtonState()` 恢复发送按钮的可用状态。
+- 需求描述：全会话未发送输入文字保留（A6.10）与空白草稿再次新建显式丢弃（A6.11），在在线形态下与离线形态保持完全一致的交互体验。
+-
+详细方案设计：
+1. 前端 `store.js` 统一维护内存中的草稿字典 `sessionDrafts: { [sessionId: string]: string }` 以及空白草稿槽位 `draftText: string`；
+2. 用户在不同在线会话间切换、或切到其他路由导航再返回时，直接从前端内存读取对应会话的草稿文字恢复到文本框，调用 `adjustInputHeight()` 与 `syncSendButtonState()`；
+3. 再次在空白草稿态点击"新建对话"时，彻底清空丢弃 `draftText`（A6.11）；
+4. 既有会话已发出的消息不受影响，草稿仅在运行时内存留存，不发起数据库读写，确保零磁盘 I/O 延迟与高响应度。
 
-##### A6.10 会话输入保留（全部会话）
-
-**A6_10_1 全会话未发送输入统一实时存取与自适应恢复**
-- 状态：已确认
-- 需求描述：每个会话各自记住输入框中尚未发送的文字；在会话之间切换、或切换到其他导航页再返回时，返回的会话恢复它自己的未发送文字；已发送的消息不受影响。
-- 详细方案设计：
-  1. 在每个正式会话对象中维护 `draft: string` 属性（默认空串 `''`）。
-  2. 统一实时写入机制：`composerInputEl` 的 `input` 监听器统一步调：
-     - 若 `activeSessionId !== null`，实时写入 `activeSession.draft = composerInputEl.value`；
-     - 若 `activeSessionId === null`，实时写入 `store.draftText = composerInputEl.value`；
-     - 彻底免除组件销毁或切换路由时的手动离场保存逻辑，杜绝漏存风险。
-  3. 会话切入即时恢复：当用户在会话列表点击切换至目标会话时：
-     - 读取目标会话的 `session.draft`，赋值给 `composerInputEl.value`；
-     - 恢复后立即调用 `adjustInputHeight()` 重新计算高度（1 行至 200px 自动展开），并调用 `syncSendButtonState()` 同步发送按钮可用状态；
-  4. 消息发送清空机制：当某会话成功发出一条消息后，立即将其 `session.draft` 清空为 `''`；其他会话已保存的未发送文字互不影响。
-
-##### A6.11 新建对话丢弃旧草稿
-
-**A6_11_1 显式新建对话丢弃条件分支与草稿恢复约定**
-- 状态：已确认
-- 需求描述：从既有会话点击"新建对话"进入草稿态时，恢复此前暂存的草稿文字（若有）；只有当前本来就处于空白草稿态时再次点击"新建对话"，旧草稿及其文字才直接丢弃，不做保留，也不提供返回旧草稿的入口；浏览页面、切换会话等非"新建对话"的操作仍按 A6.9 与 A6.10 保留文字；已经发出过消息的会话不属于草稿，不受本条目影响。
-- 详细方案设计：
-  1. 在"新建对话"按钮的点击事件处理函数 `handleNewChat()` 中根据当前活动态执行严格分支判断：
-     - 分支一（当前本已处于草稿态 `activeSessionId === null`）：
-       - 用户在草稿态再次显式点击新建对话，表明放弃当前未发送草稿；
-       - 执行 `store.clearDraftText()`，将 `store.draftText` 重置为空串 `''`；
-       - 将 `composerInputEl.value = ''`，输入框高度重置为单行（`resetInputHeight()`），发送按钮置灰禁用；
-       - 旧草稿文字彻底销毁丢弃，不提供任何恢复入口；
-     - 分支二（当前正处于某一既有正式会话 `activeSessionId !== null`）：
-       - 用户从既有会话切换回草稿态准备开启新对话；
-       - 当前会话的输入文字早已通过 `input` 实时安全保存在 `session.draft` 中（满足 A6.10）；
-       - 调用 `store.enterDraft()`，将 `activeSessionId` 切换为 `null`；
-       - 此时将此前在草稿态留存的 `store.draftText`（若有）回填至 `composerInputEl.value`；
-       - 联动调用 `adjustInputHeight()` 与 `syncSendButtonState()` 恢复草稿文字与按钮状态，严禁将既有草稿置空清零；
-  2. 会话列表中的既有会话不受影响；通过常规浏览页面、切换已有会话等操作离开或返回草稿态时，均严格执行 A6.9 与 A6.10 的文字完整保留逻辑。
+ 
