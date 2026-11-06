@@ -1,0 +1,101 @@
+/* 导航项、状态徽标与通用组件样式 */
+
+.nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.nav__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav__link {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  gap: 10px;
+  font-size: var(--text-base);
+  color: var(--color-text-secondary);
+  transition: background-color var(--motion-fast), color var(--motion-fast);
+  white-space: nowrap;
+}
+
+.nav__icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: currentColor;
+}
+
+.nav__link:hover {
+  background-color: var(--color-primary-softer);
+  color: var(--color-primary);
+}
+
+.nav__link.is-active {
+  background-color: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+/* 徽标与状态圆点 */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.badge--mock {
+  background-color: var(--color-primary-softer);
+  color: var(--color-primary);
+}
+
+.badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-primary);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-success);
+  flex-shrink: 0;
+}
+
+/* 图标栏响应式：1023px 以下隐藏导航文字但保留 DOM 供辅助技术读取 */
+@media (max-width: 1023px) {
+  .nav {
+    padding: var(--space-4) var(--space-3);
+  }
+
+  .nav__link {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .nav__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}

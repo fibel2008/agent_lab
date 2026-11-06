@@ -1,0 +1,63 @@
+/* 设计令牌：颜色、排版、间距、圆角、动效与布局尺寸 */
+
+:root {
+  color-scheme: dark;
+
+  /* 颜色令牌 */
+  --color-bg: #1a1a1a;
+  --color-surface: #242424;
+  --color-surface-hover: #2a2a2a;
+  --color-surface-muted: rgba(255, 255, 255, 0.06);
+  --color-border: #333333;
+  --color-border-strong: #3a3a3a;
+  --color-border-header: rgba(58, 58, 58, 0.5);
+  --color-border-sidebar: rgba(58, 58, 58, 0.45);
+  --color-text: #e8eaed;
+  --color-text-secondary: rgba(255, 255, 255, 0.87);
+  --color-text-muted: rgba(232, 234, 237, 0.56);
+  --color-primary: #5ba4d4;
+  --color-primary-strong: #3a8ab8;
+  --color-primary-soft: rgba(91, 164, 212, 0.12);
+  --color-primary-softer: rgba(91, 164, 212, 0.08);
+  --color-danger: #ff4d4f;
+  --color-danger-soft: rgba(255, 77, 79, 0.12);
+  --color-success: #52c41a;
+  --color-focus: rgba(91, 164, 212, 0.7);
+  --color-scrollbar: rgba(255, 255, 255, 0.16);
+  --color-scrollbar-hover: rgba(255, 255, 255, 0.28);
+
+  /* 字体与排版 */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-mono: "Cascadia Code", "Consolas", "SFMono-Regular", monospace;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --leading-base: 1.65;
+
+  /* 圆角与间距 */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+
+  /* 动效 */
+  --motion-fast: 150ms ease;
+  --motion-base: 200ms ease;
+
+  /* 布局尺寸 */
+  --layout-header-height: 50px;
+  --layout-sidebar-width: 235px;
+  --layout-sidebar-compact: 72px;
+  --layout-sidebar-mobile: 64px;
+  --layout-content-max: 1560px;
+  --layout-chat-width: 860px;
+}
