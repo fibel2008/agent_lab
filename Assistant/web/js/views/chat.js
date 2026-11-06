@@ -502,8 +502,9 @@ function renderActiveSession() {
 
 function createMessageNode(message) {
   const isUser = message.role === 'user';
+  const roleClass = isUser ? 'msg--user' : 'msg--agent msg--assistant';
   const article = el('article', {
-    className: `msg msg--${message.role}${message.status === 'streaming' ? ' is-streaming' : ''}${message.status === 'error' ? ' is-error' : ''}`,
+    className: `msg ${roleClass}${message.status === 'streaming' ? ' is-streaming' : ''}${message.status === 'error' ? ' is-error' : ''}`,
     attrs: {
       'data-message-id': message.id,
     },
@@ -642,17 +643,12 @@ async function processQueue() {
       messages: snapshot,
       signal: controller.signal,
       onMeta({ message_id, created_at }) {
-        const patch = {};
-        if (created_at) {
-          patch.createdAt = new Date(created_at);
-        }
-        if (message_id) {
-          patch.id = message_id;
-        }
-        updateMessage(agentMessage.id, patch, sessionId);
+        const prevId = agentMessage.id;
 
         if (getActiveSessionId() === sessionId && messagesEl) {
-          const cardNode = messagesEl.querySelector(`[data-message-id="${agentMessage.id}"]`);
+          const cardNode = messagesEl.querySelector(
+            `[data-message-id="${prevId}"], [data-message-id="${messageId}"]`,
+          );
           if (cardNode) {
             if (message_id) {
               cardNode.dataset.messageId = message_id;
@@ -667,6 +663,15 @@ async function processQueue() {
             }
           }
         }
+
+        const patch = {};
+        if (created_at) {
+          patch.createdAt = new Date(created_at);
+        }
+        if (message_id) {
+          patch.id = message_id;
+        }
+        updateMessage(prevId, patch, sessionId);
       },
       onDelta({ text }) {
         if (!text) {
@@ -678,14 +683,15 @@ async function processQueue() {
 
         // 2. 若用户当前停留在该会话，动态定位 DOM 节点并更新
         if (getActiveSessionId() === sessionId && messagesEl) {
-          const cardNode = messagesEl.querySelector(`[data-message-id="${agentMessage.id}"]`);
+          const cardNode = messagesEl.querySelector(
+            `[data-message-id="${agentMessage.id}"], [data-message-id="${messageId}"]`,
+          );
           if (cardNode) {
-            if (!firstDeltaReceived) {
-              firstDeltaReceived = true;
-              const waitingEl = cardNode.querySelector('.msg__waiting');
-              if (waitingEl) {
-                waitingEl.remove();
-              }
+            cardNode.dataset.messageId = agentMessage.id;
+
+            const waitingEl = cardNode.querySelector('.msg__waiting');
+            if (waitingEl) {
+              waitingEl.remove();
             }
             const textEl = cardNode.querySelector('.msg__text');
             if (textEl) {
@@ -701,8 +707,11 @@ async function processQueue() {
         updateMessage(agentMessage.id, { status: 'done' }, sessionId);
 
         if (getActiveSessionId() === sessionId && messagesEl) {
-          const cardNode = messagesEl.querySelector(`[data-message-id="${agentMessage.id}"]`);
+          const cardNode = messagesEl.querySelector(
+            `[data-message-id="${agentMessage.id}"], [data-message-id="${messageId}"]`,
+          );
           if (cardNode) {
+            cardNode.dataset.messageId = agentMessage.id;
             const waitingEl = cardNode.querySelector('.msg__waiting');
             if (waitingEl) {
               waitingEl.remove();
@@ -728,8 +737,11 @@ async function processQueue() {
         updateMessage(agentMessage.id, { status: 'error' }, sessionId);
 
         if (getActiveSessionId() === sessionId && messagesEl) {
-          const cardNode = messagesEl.querySelector(`[data-message-id="${agentMessage.id}"]`);
+          const cardNode = messagesEl.querySelector(
+            `[data-message-id="${agentMessage.id}"], [data-message-id="${messageId}"]`,
+          );
           if (cardNode) {
+            cardNode.dataset.messageId = agentMessage.id;
             const waitingEl = cardNode.querySelector('.msg__waiting');
             if (waitingEl) {
               waitingEl.remove();

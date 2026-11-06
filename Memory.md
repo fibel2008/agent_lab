@@ -65,6 +65,7 @@
 3.4 2026-11-06 Starlette 的 `TestClient` 额外依赖 `httpx`；在不引入额外测试依赖的前提下，可通过启动子进程配合标准库 `urllib.request` 完成接口与静态资源冒烟验证。
 3.5 2026-11-06 Windows 注册表默认将 `.js` 的 Content Type 设为 `text/plain`，Python `mimetypes` 读取注册表后导致 `StaticFiles` 以 `text/plain` 返回 JS 模块，触发浏览器 ES Modules 严格 MIME 校验报错并拒绝执行 `main.js`；且仅设置 `Cache-Control: no-cache` 时浏览器后续请求会收到 `304 Not Modified` 并继续沿用首次缓存的 `text/plain` 头；通过在 `app.py` 显式调用 `mimetypes.add_type("text/javascript", ".js")` 并在中间件中剥离条件请求头、设置 `Cache-Control: no-store, no-cache, must-revalidate` 强制返回 `200 OK` 彻底解决。
 3.6 2026-11-06 对话页中使用 flex-direction: column 且配有 justify-content: flex-end 和 min-height: 100% 时，会导致内容溢出至负向滚动区从而使鼠标滚轮无法向上滑动查看历史；同时会导致初始空状态被挤压偏移且触发未预期的滚动条；改用全宽滚动容器结合 calc((100% - 860px) / 2) 居中边距与自然流式追加，并在空状态隐藏空列表，彻底解决滚轮滑动与居中问题。
+3.7 2026-11-06 多会话流式响应时，`onMeta` 中优先执行 `updateMessage` 导致 `agentMessage.id` 变更为服务端分配的 `message_id`，而此时 DOM 节点的 `data-message-id` 仍为客户端初始占位 ID，导致选择器返回 null，未能及时同步 DOM 属性；致使后续 `onDelta` 增量无法在当前会话的 DOM 树上命中卡片，造成等待动画无法移除且文字未能实时上屏（切走再切回时由于全量重绘因此能恢复显示）。通过在 `onMeta` 中优先基于 `prevId` 定位并更新 DOM 属性、在 `onDelta` 中双重兼容最新 ID 与初始 ID，并补充 `.msg--assistant` 样式选择器，彻底修复流式实时逐字上屏问题。
 
 ## 4. 下一步
 
