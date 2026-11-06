@@ -475,7 +475,7 @@ class Agent(Protocol):
 ##### A3.1 回复来源
 
 **A3_1_1 本地确定性关键词匹配 Mock 生成器**
-- 状态：已确认
+- 状态：已完成
 - 需求描述：在后端提供无需外网与 API Key 的确定性 Mock 回复生成器，按固定关键词优先级返回纯文本回复。
 - 详细方案设计：
   1. 新增 `Assistant/agent/mock_agent.py`，定义 `MockAgent` 类（`name = "mock"`，`model = "mock-0.1"`）。
@@ -489,7 +489,7 @@ class Agent(Protocol):
 ##### A3.2 回复逻辑集中
 
 **A3_2_1 Agent 协议抽象与唯一工厂替换点**
-- 状态：已确认
+- 状态：已完成
 - 需求描述：定义统一的 `Agent` 协议并通过 `factory.py` 暴露唯一获取入口，使路由层与具体 Mock 实现解耦。
 - 详细方案设计：
   1. 在 `Assistant/agent/base.py` 定义 `ChatMessage` 与 `Agent(Protocol)`（包含属性 `name: str` 与方法 `stream_reply(self, messages: Sequence[ChatMessage]) -> AsyncIterator[str]`）。
@@ -499,7 +499,7 @@ class Agent(Protocol):
 ##### A3.3 接口形态
 
 **A3_3_1 请求模型校验与 SSE 流式路由实现**
-- 状态：已确认
+- 状态：已完成
 - 需求描述：实现 `POST /api/chat` 路由，完成请求合法性校验并以 `text/event-stream` 按序推送 `meta`、`delta`、`done` / `error` 事件。
 - 详细方案设计：
   1. 在 `Assistant/api/schemas.py` 定义 `ChatRequest(BaseModel)`：校验 `messages` 长度 `1..30`、每条 `content.strip()` 非空且长度 `<= 4000`、最后一条 `role == "user"`，违反时由 FastAPI 自动返回 `422`。
@@ -513,7 +513,7 @@ class Agent(Protocol):
 ##### A4.1 逐字显示
 
 **A4_1_1 后端按字符切片与异步延时推送**
-- 状态：已确认
+- 状态：已完成
 - 需求描述：后端将完整回复按固定字符数切片并在块间异步等待，形成稳定的服务端流式推送节奏。
 - 详细方案设计：
   1. 在 `MockAgent.stream_reply()` 中读取 `Assistant/config.py` 的 `CHUNK_SIZE`（默认 `1`）与 `STREAM_DELAY_MS`（默认 `20`）。
