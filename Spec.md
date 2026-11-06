@@ -263,7 +263,7 @@ class Agent(Protocol):
 - 需求描述：前端采用零构建的原生 HTML / CSS / ES Modules，由 FastAPI 进程同源托管并禁用静态缓存。
 - 详细方案设计：
   1. 在 `Assistant/app.py` 创建 `FastAPI` 实例时设置 `docs_url=None`、`redoc_url=None`（防止加载外部 CDN 资源），保留 `openapi_url="/api/openapi.json"`。
-  2. 注册 HTTP 中间件 `no_cache_static_middleware`：对所有非 `/api` 前缀的 `GET` 响应设置 `Cache-Control: no-cache`。
+  2. 注册 HTTP 中间件 `no_cache_static_middleware`：对所有非 `/api` 前缀的 `GET` 请求剥离 `If-None-Match` 与 `If-Modified-Since` 条件请求头，并将响应头设为 `Cache-Control: no-store, no-cache, must-revalidate`，强制返回 `200 OK` 最新静态资源，杜绝 `304 Not Modified` 复用旧缓存响应。
   3. 在 `/api` 路由注册完成后，使用 `StaticFiles(directory=str(WEB_DIR), html=True)` 挂载到 `/`。
   4. 在挂载静态目录前调用 `mimetypes.add_type("text/javascript", ".js")` 与 `mimetypes.add_type("text/css", ".css")`，规避 Windows 注册表将 `.js` 映射为 `text/plain` 导致浏览器拒绝执行 ES Modules 的问题。
 
@@ -296,7 +296,7 @@ class Agent(Protocol):
 - 状态：已完成
 - 需求描述：在项目根目录提供一键启动文件 `start.bat`，打开后直接启动后端服务，并在服务就绪后自动用系统默认浏览器弹出工作台网页。
 - 详细方案设计：
-  1. 在项目根目录新增 `start.bat`：切换代码页为 UTF-8（`chcp 65001 >nul`），定位到脚本所在目录（`cd /d "%~dp0"`），设置环境变量 `ASSISTANT_OPEN_BROWSER=1`，调用 `".\.venv\Scripts\python.exe" -m Assistant` 启动服务；若异常退出则执行 `pause` 保留窗口便于查看报错。
+  1. 在项目根目录新增 `start.bat`：切换代码页为 UTF-8（`chcp 65001 >nul`），定位到脚本所在目录（`cd /d "%~dp0"`），自动清理仍占用 `8000` 端口的旧服务进程，设置环境变量 `ASSISTANT_OPEN_BROWSER=1`，调用 `".\.venv\Scripts\python.exe" -m Assistant` 启动服务；若异常退出则执行 `pause` 保留窗口便于查看报错。
   2. 在 `Assistant/config.py` 新增布尔配置 `OPEN_BROWSER`（当环境变量 `ASSISTANT_OPEN_BROWSER` 为 `"1"` 或 `"true"` 时为 `True`，默认 `False`）。
   3. 在 `Assistant/__main__.py` 中：当 `OPEN_BROWSER` 为 `True` 时，在调用 `uvicorn.run()` 前启动一个守护线程 `_open_browser_when_ready(host, port)`，轮询 `http://{host}:{port}/api/health` 直到返回 `200`（最长等待 5 秒），随即调用标准库 `webbrowser.open(f"http://{host}:{port}/")` 自动弹出默认浏览器。
 
