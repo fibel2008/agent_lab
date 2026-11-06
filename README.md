@@ -23,7 +23,7 @@ py -V:Astral\CPython3.12.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-2. 启动后端与静态托管服务：
+2. 启动后端与静态托管服务（可直接双击打开根目录下的 `start.bat` 自动启动并弹出默认浏览器，或执行以下命令）：
 
 ```powershell
 .\.venv\Scripts\python.exe -m Assistant
@@ -38,6 +38,7 @@ py -V:Astral\CPython3.12.13 -m venv .venv
 Lab1/
 ├── Assistant/       应用代码（Python 后端 + 原生前端静态文件）
 ├── requirements.txt Python 直接依赖声明
+├── start.bat        一键启动脚本（启动服务并自动弹出默认浏览器）
 ├── Intent.md        为什么做、做什么、不做什么
 ├── Spec.md          具体怎么实现
 ├── Memory.md        做到哪了、学到了什么

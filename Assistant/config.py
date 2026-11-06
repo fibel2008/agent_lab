@@ -53,3 +53,4 @@ HOST: str = os.environ.get("ASSISTANT_HOST", "").strip() or "127.0.0.1"
 PORT: int = _read_int_env("ASSISTANT_PORT", 8000, min_value=1)
 STREAM_DELAY_MS: int = _read_int_env("ASSISTANT_STREAM_DELAY_MS", 20, min_value=0)
 CHUNK_SIZE: int = _read_int_env("ASSISTANT_CHUNK_SIZE", 1, min_value=1)
+OPEN_BROWSER: bool = os.environ.get("ASSISTANT_OPEN_BROWSER", "").strip().lower() in ("1", "true", "yes")

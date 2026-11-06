@@ -34,6 +34,7 @@
 2.17 2026-11-06 Intent.md 重构为编号需求列表，子板块从 A1.0 起、需求从 A1.1 起。理由：需求要能逐条验收与追踪；编号一经分配不改不复用，废弃项留号标注，才能看出需求的增删轨迹。原先按章节叙述，无法把一条验收对回一条需求；重构后 Spec 与 Memory 中的「Intent 6.x」引用同步改为新编号。
 2.18 2026-11-06 应用名称由"Agent 学习助手"重命名为"Emibot"，顶栏品牌名、页面标题后缀、后端启动提示与文档标题同步更新。理由：Fibel 在验收 `feature/app-shell` 时确定正式名称。
 2.19 2026-11-06 Spec.md 重构为"目录结构、架构、接口与数据规定、需求列表"四部分，每条 Intent 需求 `A{x}.{y}` 拆解为 `Ax_y_z` 实现子项（含状态、需求描述、详细方案设计），编号固定不复用、废弃项留号标注。理由：Fibel 要求让每条业务需求都能精确追踪到具体的方案设计子项。
+2.20 2026-11-06 在 A1.2 追加一键启动需求并拆解为 `A1_2_3`：根目录新增 `start.bat`，通过 `ASSISTANT_OPEN_BROWSER=1` 触发后端在 `/api/health` 就绪后调用 `webbrowser.open` 自动弹出系统默认浏览器。理由：Fibel 要求在文件夹中直接打开文件即可启动服务并弹出网页，轮询健康检查就绪后再打开浏览器可避免端口未监听时的连接失败页。
 
 ## 3. 踩过的坑
 
@@ -41,6 +42,7 @@
 3.2 2026-11-06 本机默认 Python 为 3.14，部分 Web 依赖在该版本上的兼容性未经确认。计划用 3.12 建立虚拟环境。
 3.3 2026-11-06 `py -3.12` 报 "No runtime installed"，实际 3.12.13 的启动器注册名为 `Astral\CPython3.12.13`；创建虚拟环境使用 `py -V:Astral\CPython3.12.13 -m venv .venv`。
 3.4 2026-11-06 Starlette 的 `TestClient` 额外依赖 `httpx`；在不引入额外测试依赖的前提下，可通过启动子进程配合标准库 `urllib.request` 完成接口与静态资源冒烟验证。
+3.5 2026-11-06 Windows 注册表默认将 `.js` 的 Content Type 设为 `text/plain`，Python `mimetypes` 读取注册表后导致 `StaticFiles` 以 `text/plain` 返回 JS 模块，触发浏览器 ES Modules 严格 MIME 校验报错并拒绝执行 `main.js`；且仅设置 `Cache-Control: no-cache` 时浏览器后续请求会收到 `304 Not Modified` 并继续沿用首次缓存的 `text/plain` 头；通过在 `app.py` 显式调用 `mimetypes.add_type("text/javascript", ".js")` 并在中间件中剥离条件请求头、设置 `Cache-Control: no-store, no-cache, must-revalidate` 强制返回 `200 OK` 彻底解决。
 
 ## 4. 下一步
 
