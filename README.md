@@ -10,26 +10,38 @@
 
 ## 当前状态
 
-文档基线阶段：已建立四份文档与 Git 约定，程序尚未实现。
-运行方式在第一版第一个功能（应用外壳与导航）完成后补充到本文档。
+已实现应用外壳与导航（`feature/app-shell`）：支持本地启动服务、访问健康检查接口、加载深色工作台外壳、切换五项哈希路由及查看四个预留占位页。
 
 ## 运行方式
 
-第一版完成后生效，预期步骤如下（命令以实际实现为准）：
+在项目根目录 `D:\desk\jyy\Lab1` 的 PowerShell 中执行以下步骤：
 
-1. 在项目根目录创建并激活 Python 虚拟环境（3.12）。
-2. 安装后端依赖。
-3. 启动后端服务，在浏览器访问 `http://127.0.0.1:8000/`。
+1. 创建 Python 3.12 虚拟环境并安装依赖（首次运行执行一次）：
+
+```powershell
+py -V:Astral\CPython3.12.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+2. 启动后端与静态托管服务：
+
+```powershell
+.\.venv\Scripts\python.exe -m Assistant
+```
+
+3. 在浏览器打开 `http://127.0.0.1:8000/` 访问工作台，或访问 `http://127.0.0.1:8000/api/health` 查看健康检查状态。
+4. 若默认端口 `8000` 被占用，可在启动前设置环境变量 `$env:ASSISTANT_PORT=8001` 更换端口。
 
 ## 目录概览
 
 ```
 Lab1/
-├── Assistant/    应用代码（前端静态文件 + Python 后端）
-├── Intent.md     为什么做、做什么、不做什么
-├── Spec.md       具体怎么实现
-├── Memory.md     做到哪了、学到了什么
-└── README.md     这是什么、怎么跑起来
+├── Assistant/       应用代码（Python 后端 + 原生前端静态文件）
+├── requirements.txt Python 直接依赖声明
+├── Intent.md        为什么做、做什么、不做什么
+├── Spec.md          具体怎么实现
+├── Memory.md        做到哪了、学到了什么
+└── README.md        这是什么、怎么跑起来
 ```
 
 ## 文档导航
@@ -42,4 +54,4 @@ Lab1/
 
 ## 验收
 
-第一版的功能验收由主 Agent 依据 Intent.md 与 Spec.md 中的验收清单逐条执行，验收通过后再合并回 `main`。
+第一版的功能验收由主 Agent 或用户依据 Intent.md 与 Spec.md 中的验收清单逐条执行，验收通过后再合并回 `main`。
