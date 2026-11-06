@@ -3,7 +3,7 @@
 import { createSvgIcon } from './dom.js';
 import { initRouter } from './router.js';
 import { ROUTES } from './routes.js';
-import { initChatView, onChatViewActivated } from './views/chat.js';
+import { initChatView, onChatViewActivated, onChatViewDeactivated } from './views/chat.js';
 import { renderPlaceholder } from './views/placeholder.js';
 
 function buildNavList(navListEl) {
@@ -54,8 +54,13 @@ function bootstrap() {
         if (typeof onChatViewActivated === 'function') {
           onChatViewActivated();
         }
-      } else if (route.view === 'placeholder') {
-        renderPlaceholder(viewPlaceholderEl, route);
+      } else {
+        if (typeof onChatViewDeactivated === 'function') {
+          onChatViewDeactivated();
+        }
+        if (route.view === 'placeholder') {
+          renderPlaceholder(viewPlaceholderEl, route);
+        }
       }
     },
   });

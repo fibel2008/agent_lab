@@ -40,10 +40,15 @@ let sendButtonEl = null;
 let composerQueueEl = null;
 let newChatButtonEl = null;
 let chatSessionsListEl = null;
+let chatSessionsEl = null;
+let collapseSessionsBtnEl = null;
+let expandSessionsBtnEl = null;
 
 let isComposing = false;
 let shouldAutoScroll = true;
 let editingSessionId = null;
+let isSessionsCollapsed = false;
+let userCollapsePreference = null;
 
 export function initChatView() {
   chatScrollEl = document.getElementById('chat-scroll');
@@ -55,6 +60,9 @@ export function initChatView() {
   composerQueueEl = document.getElementById('composer-queue');
   newChatButtonEl = document.getElementById('new-chat-button');
   chatSessionsListEl = document.getElementById('chat-sessions-list');
+  chatSessionsEl = document.getElementById('chat-sessions');
+  collapseSessionsBtnEl = document.getElementById('collapse-sessions-btn');
+  expandSessionsBtnEl = document.getElementById('expand-sessions-btn');
 
   if (!composerInputEl || !composerFormEl) {
     return;
@@ -127,6 +135,42 @@ export function initChatView() {
     });
   }
 
+  // 7. 会话侧栏收起与展开
+  const mediaQuery = window.matchMedia('(max-width: 1023px)');
+
+  function applyResponsiveCollapse(matches) {
+    if (userCollapsePreference !== null) {
+      if (matches) {
+        setSessionsCollapsed(true);
+      } else {
+        setSessionsCollapsed(userCollapsePreference);
+      }
+    } else {
+      setSessionsCollapsed(matches);
+    }
+  }
+
+  // 默认不收缩，当窗口页面不足（< 1024px）时收缩
+  applyResponsiveCollapse(mediaQuery.matches);
+
+  mediaQuery.addEventListener('change', (e) => {
+    applyResponsiveCollapse(e.matches);
+  });
+
+  if (collapseSessionsBtnEl) {
+    collapseSessionsBtnEl.addEventListener('click', () => {
+      userCollapsePreference = true;
+      setSessionsCollapsed(true);
+    });
+  }
+
+  if (expandSessionsBtnEl) {
+    expandSessionsBtnEl.addEventListener('click', () => {
+      userCollapsePreference = false;
+      setSessionsCollapsed(false);
+    });
+  }
+
   // 初始化会话列表与右侧视图
   renderSessionList();
   renderActiveSession();
@@ -134,11 +178,36 @@ export function initChatView() {
   syncSendButtonState();
 }
 
+export function setSessionsCollapsed(collapsed) {
+  isSessionsCollapsed = Boolean(collapsed);
+  if (chatSessionsEl) {
+    chatSessionsEl.classList.toggle('is-collapsed', isSessionsCollapsed);
+  }
+  const viewChat = document.getElementById('view-chat');
+  const isChatVisible = viewChat && !viewChat.hidden;
+  if (expandSessionsBtnEl) {
+    expandSessionsBtnEl.hidden = !isChatVisible || !isSessionsCollapsed;
+  }
+}
+
+export function isSessionListCollapsed() {
+  return isSessionsCollapsed;
+}
+
 export function onChatViewActivated() {
   adjustInputHeight();
   syncSendButtonState();
   if (shouldAutoScroll && chatScrollEl) {
     scrollToBottom(chatScrollEl);
+  }
+  if (expandSessionsBtnEl) {
+    expandSessionsBtnEl.hidden = !isSessionsCollapsed;
+  }
+}
+
+export function onChatViewDeactivated() {
+  if (expandSessionsBtnEl) {
+    expandSessionsBtnEl.hidden = true;
   }
 }
 

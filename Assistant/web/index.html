@@ -55,6 +55,12 @@
       <polyline points="3 6 5 6 21 6"></polyline>
       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
     </symbol>
+    <symbol id="icon-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="15 18 9 12 15 6"></polyline>
+    </symbol>
+    <symbol id="icon-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </symbol>
   </svg>
 
   <a class="skip-link" href="#main-content">跳到主内容</a>
@@ -82,6 +88,10 @@
         <span class="status-dot" aria-hidden="true"></span>
         <span class="app-sidebar__footer-text">本地运行 · v0.1.0</span>
       </div>
+      <button class="app-sidebar__expand-btn" id="expand-sessions-btn" type="button" title="展开会话列表" aria-label="展开会话列表" hidden>
+        <svg class="app-sidebar__expand-icon" viewBox="0 0 24 24"><use href="#icon-chevron-right"></use></svg>
+        <span class="app-sidebar__expand-text">展开会话列表</span>
+      </button>
     </aside>
 
     <main class="app-main" id="main-content">
@@ -95,6 +105,12 @@
             </button>
           </div>
           <ul class="chat-sessions__list" id="chat-sessions-list" role="list"></ul>
+          <div class="chat-sessions__footer">
+            <button class="chat-sessions__collapse-btn" id="collapse-sessions-btn" type="button" title="收起会话列表" aria-label="收起会话列表">
+              <svg class="chat-sessions__collapse-icon" viewBox="0 0 24 24"><use href="#icon-chevron-left"></use></svg>
+              <span class="chat-sessions__collapse-text">收起会话列表</span>
+            </button>
+          </div>
         </aside>
         <div class="chat" id="chat-main">
           <div class="chat__scroll" id="chat-scroll">
