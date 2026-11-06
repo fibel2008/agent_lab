@@ -6,30 +6,32 @@
   flex: 1;
   min-height: 0;
   width: 100%;
-  max-width: var(--layout-chat-width);
-  margin: 0 auto;
   height: 100%;
 }
 
+/* 滚动容器：全宽占据，使右侧细滚动条贴齐主内容区右边缘，并在整个视口内响应滚轮 */
 .chat__scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
+  padding: var(--space-5) max(var(--space-4), calc((100% - var(--layout-chat-width)) / 2)) var(--space-2);
 }
 
-/* 对话页空状态：居中偏上展示 */
+/* 对话页初始空状态：在滚动视口内水平与垂直严格居中 */
 .chat__empty {
-  margin: auto;
-  transform: translateY(-10%);
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   text-align: center;
-  max-width: 360px;
+  max-width: 420px;
   padding: var(--space-6);
   gap: var(--space-3);
+  margin: 0 auto;
 }
 
 .chat__empty[hidden] {
@@ -65,15 +67,17 @@
   line-height: 1.5;
 }
 
-/* 消息列表容器 */
+/* 消息列表容器：空时不占高度避免出现多余滚动条，有消息时自顶向下平滑流式追加 */
+.chat__messages:empty {
+  display: none;
+}
+
 .chat__messages {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  padding: var(--space-4) var(--space-4) var(--space-2);
   width: 100%;
-  min-height: 100%;
-  justify-content: flex-end;
+  padding-bottom: var(--space-3);
 }
 
 /* 单条消息项 */
@@ -231,7 +235,7 @@
 
 /* 底部输入区 */
 .chat__composer {
-  padding: var(--space-2) var(--space-4) var(--space-4);
+  padding: var(--space-2) max(var(--space-4), calc((100% - var(--layout-chat-width)) / 2)) var(--space-4);
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -264,7 +268,7 @@
   background-color: var(--color-surface);
   border: 1px solid var(--color-border-strong);
   border-radius: 16px;
-  padding: 10px 12px 10px 16px;
+  padding: 8px 12px 8px 16px;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -275,7 +279,7 @@
 
 .composer__row {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: var(--space-2);
   width: 100%;
 }
@@ -289,11 +293,13 @@
   resize: none;
   color: var(--color-text);
   font-size: 14px;
-  line-height: 1.5;
-  min-height: 24px;
+  line-height: 22px;
+  min-height: 36px;
   max-height: 200px;
-  padding: 4px 0;
+  padding: 7px 0;
+  box-sizing: border-box;
   font-family: inherit;
+  vertical-align: middle;
 }
 
 .composer__input::placeholder {

@@ -38,11 +38,24 @@ export function initChatView() {
     return;
   }
 
-  // 监听滚动，判断是否处于底部跟随区间
+  // 监听滚动与鼠标滚轮事件
   if (chatScrollEl) {
     chatScrollEl.addEventListener('scroll', () => {
       shouldAutoScroll = isNearBottom(chatScrollEl, 80);
     });
+
+    // 用户主动向上滑动鼠标滚轮时，立即解除自动吸底锁定，允许自由查看历史
+    chatScrollEl.addEventListener(
+      'wheel',
+      (event) => {
+        if (event.deltaY < 0) {
+          shouldAutoScroll = false;
+        } else if (isNearBottom(chatScrollEl, 80)) {
+          shouldAutoScroll = true;
+        }
+      },
+      { passive: true },
+    );
   }
 
   // 输入框自适应高度与按键状态联动
@@ -78,7 +91,8 @@ export function initChatView() {
     handleSubmit();
   });
 
-  // 初始化按钮状态
+  // 初始化输入框高度与按钮状态
+  resetInputHeight();
   syncSendButtonState();
 }
 
@@ -87,15 +101,24 @@ function adjustInputHeight() {
     return;
   }
   composerInputEl.style.height = 'auto';
-  const targetHeight = Math.min(composerInputEl.scrollHeight, 200);
+  const targetHeight = Math.min(Math.max(composerInputEl.scrollHeight, 36), 200);
   composerInputEl.style.height = `${targetHeight}px`;
+
+  const rowEl = composerInputEl.closest('.composer__row');
+  if (rowEl) {
+    rowEl.style.alignItems = targetHeight > 42 ? 'flex-end' : 'center';
+  }
 }
 
 function resetInputHeight() {
   if (!composerInputEl) {
     return;
   }
-  composerInputEl.style.height = 'auto';
+  composerInputEl.style.height = '36px';
+  const rowEl = composerInputEl.closest('.composer__row');
+  if (rowEl) {
+    rowEl.style.alignItems = 'center';
+  }
 }
 
 function syncSendButtonState() {
@@ -168,7 +191,7 @@ function handleSubmit() {
     return;
   }
 
-  // 1. 用户消息立即上屏
+  // 1. 用户消息立即上屏，隐藏空状态以清除空状态所占空间
   if (chatEmptyEl) {
     chatEmptyEl.hidden = true;
   }
