@@ -9,6 +9,7 @@
 2026-11-06：项目骨架建立。四份文档初始化完成，Git 基线就绪，尚未编写任何代码。
 2026-11-06：第一版实现规格（Spec.md）定稿，技术选型、界面规格与四个功能拆分已确定，等待 Fibel 确认后开工。
 2026-11-06：配置 GitHub 远端 `origin`，开始执行"提交后推送"的同步约定。
+2026-11-06：完成 `.venv`（Python 3.12.13）创建与依赖安装，`feature/app-shell` 分支开发完毕并已推送远端，等待验收后合并回 `main`。
 
 ## 2. 已做决定及理由
 
@@ -34,9 +35,10 @@
 3.1 2026-11-06 空目录 `Assistant/` 未被 Git 跟踪。后续放入首个文件或 `.gitkeep` 后方可入库。
 3.2 2026-11-06 本机默认 Python 为 3.14，部分 Web 依赖在该版本上的兼容性未经确认。计划用 3.12 建立虚拟环境。
 3.3 2026-11-06 `py -3.12` 报 "No runtime installed"，实际 3.12.13 的启动器注册名为 `Astral\CPython3.12.13`；创建虚拟环境使用 `py -V:Astral\CPython3.12.13 -m venv .venv`。
+3.4 2026-11-06 Starlette 的 `TestClient` 额外依赖 `httpx`；在不引入额外测试依赖的前提下，可通过启动子进程配合标准库 `urllib.request` 完成接口与静态资源冒烟验证。
 
 ## 4. 下一步
 
-4.1 Fibel 审阅 Spec.md；确认后按 Spec 3.1 的命令创建 `.venv` 并安装依赖。
-4.2 从 `main` 切 `feature/app-shell`，按 Spec 10.3 的提交序列实现应用外壳与占位页。
+4.1 Fibel 验收 `feature/app-shell`（对应 Intent 6.1、6.2、6.10）；验收通过后使用 `git merge --no-ff` 合回 `main` 并推送。
+4.2 从合并后的 `main` 切出 `feature/mock-agent`，按 Spec 10.3 实现 Agent 协议、Mock 回复生成器与 `/api/chat` SSE 接口。
 4.3 每个功能人工验收后 `--no-ff` 合并，更新本文件，并把当前分支与 `main` 推送到 `origin`。
