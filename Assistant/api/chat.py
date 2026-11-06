@@ -10,8 +10,9 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from ..agent.base import Agent
+from ..agent.errors import LLMError
 from ..agent.factory import get_agent
-from ..config import logger
+from ..config import ERROR_MESSAGES, logger
 from .schemas import ChatRequest
 
 router = APIRouter()
@@ -70,13 +71,23 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
         except asyncio.CancelledError:
             logger.debug("Chat stream cancelled by client: message_id=%s", message_id)
             raise
-        except Exception:
-            logger.exception("Chat stream failed: message_id=%s", message_id)
+        except LLMError as exc:
+            logger.warning("Chat stream LLMError: message_id=%s code=%s message=%s", message_id, exc.code, exc.message)
             yield _format_sse_event(
                 "error",
                 {
-                    "code": "stream_error",
-                    "message": "回复生成失败",
+                    "code": exc.code,
+                    "message": exc.message,
+                },
+            )
+        except Exception:
+            logger.exception("Chat stream failed: message_id=%s", message_id)
+            code = "INTERNAL_ERROR"
+            yield _format_sse_event(
+                "error",
+                {
+                    "code": code,
+                    "message": ERROR_MESSAGES.get(code, "生成过程发生异常，请重试。"),
                 },
             )
 

@@ -734,12 +734,26 @@ function createMessageNode(message) {
     bubble.appendChild(waiting);
   }
 
-  const displayText = isError && message.errorMessage ? message.errorMessage : (message.content || '');
-  const text = el('p', {
-    className: 'msg__text',
-    text: displayText,
-  });
-  bubble.appendChild(text);
+  if (isError && message.content && message.errorMessage) {
+    const text = el('p', {
+      className: 'msg__text',
+      text: message.content,
+    });
+    bubble.appendChild(text);
+
+    const tip = el('div', {
+      className: 'msg__error-tip',
+      text: message.errorMessage,
+    });
+    bubble.appendChild(tip);
+  } else {
+    const displayText = isError && message.errorMessage ? message.errorMessage : (message.content || '');
+    const text = el('p', {
+      className: 'msg__text',
+      text: displayText,
+    });
+    bubble.appendChild(text);
+  }
 
   if (isInterrupted) {
     const badge = el('span', {
@@ -959,13 +973,8 @@ async function processQueue() {
           return;
         }
 
-        if (agentMessage.content) {
-          agentMessage.content += '\n\n[回复生成中断，请重试]';
-        } else {
-          agentMessage.content = error?.message || '连接失败，请确认后端服务正在运行。';
-        }
-
-        updateMessage(agentMessage.id, { status: 'error' }, sessionId);
+        const errMsg = error?.message || '生成过程发生异常，请重试。';
+        updateMessage(agentMessage.id, { status: 'error', errorMessage: errMsg }, sessionId);
 
         if (getActiveSessionId() === sessionId && messagesEl) {
           const cardNode = messagesEl.querySelector(
@@ -980,10 +989,27 @@ async function processQueue() {
             cardNode.classList.remove('is-streaming');
             cardNode.classList.add('is-error');
 
+            const bubble = cardNode.querySelector('.msg__bubble');
             const textEl = cardNode.querySelector('.msg__text');
-            if (textEl) {
-              textEl.textContent = agentMessage.content;
+
+            if (agentMessage.content) {
+              if (textEl) {
+                textEl.textContent = agentMessage.content;
+              }
+              if (bubble) {
+                let tipEl = bubble.querySelector('.msg__error-tip');
+                if (!tipEl) {
+                  tipEl = el('div', { className: 'msg__error-tip' });
+                  bubble.appendChild(tipEl);
+                }
+                tipEl.textContent = errMsg;
+              }
+            } else {
+              if (textEl) {
+                textEl.textContent = errMsg;
+              }
             }
+
             if (shouldAutoScroll && chatScrollEl) {
               scrollToBottom(chatScrollEl);
             }
