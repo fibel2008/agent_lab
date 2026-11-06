@@ -1,0 +1,60 @@
+/* 对话主窗口布局与空状态样式 */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: var(--layout-chat-width);
+  margin: 0 auto;
+}
+
+.chat__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 对话页空状态：图标 40px 置于 64px 圆形 primary-soft 背景，整体偏上约 45% */
+.chat__empty {
+  margin: auto;
+  transform: translateY(-10%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 360px;
+  padding: var(--space-6);
+  gap: var(--space-3);
+}
+
+.chat__empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-primary-soft);
+  color: var(--color-primary);
+  margin-bottom: var(--space-1);
+}
+
+.chat__empty-icon svg {
+  width: 40px;
+  height: 40px;
+}
+
+.chat__empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.chat__empty-text {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}

@@ -1,4 +1,4 @@
-# Spec：Agent 学习助手
+# Spec：Emibot
 
 <!-- 文档职责：回答"具体怎么实现"。
      只写目录结构、模块划分、接口定义、界面规格、命名约定与验收步骤。
@@ -86,7 +86,7 @@ py -V:Astral\CPython3.12.13 -m venv .venv
 ```
 
 3.2.1 必须在项目根目录执行，`Assistant` 才能作为包被发现。
-3.2.2 启动成功后打印一行：`Agent 学习助手已启动：http://127.0.0.1:8000`。
+3.2.2 启动成功后打印一行：`Emibot 已启动：http://127.0.0.1:8000`。
 3.2.3 浏览器访问 `http://127.0.0.1:8000/`；健康检查为 `GET http://127.0.0.1:8000/api/health`。
 3.2.4 不开启 `--reload`：第一版不引入文件监听依赖；修改前端后刷新浏览器即可，修改 Python 后重启进程。
 
@@ -337,7 +337,7 @@ def get_agent() -> Agent:
 ```
 
 6.9.2 `api/chat.py` 只依赖 `get_agent()` 与 `Agent` 协议，不 import `MockAgent`。
-6.9.3 替换真实模型时：新增一个实现 `Agent` 协议的模块，修改 `factory.py` 中的一行构造；API、前端与数据模型不动。这就是 Intent.md 6.9 的落点。
+6.9.3 替换真实模型时：新增一个实现 `Agent` 协议的模块，修改 `factory.py` 中的一行构造；API、前端与数据模型不动。这就是 A3.2 的落点。
 
 ### 6.10 Mock 回复
 
@@ -347,7 +347,7 @@ def get_agent() -> Agent:
 | 命中关键词 | 回复方向 |
 |---|---|
 | 你好、hello、hi | 问候，并说明当前是 mock 模式、可以聊什么 |
-| 你是谁、介绍、名字 | 说明自己是 Agent 学习助手，用于演示对话主流程 |
+| 你是谁、介绍、名字 | 说明自己是 Emibot，用于演示对话主流程 |
 | 学习、怎么学、agent | 给出三步学习建议：先跑通对话、再理解工具调用、最后做记忆 |
 | 数据库、记忆、笔记 | 说明个人数据库与记忆功能将在后续版本开放 |
 | 其他 | 复述用户输入，并追问一个具体的学习问题 |
@@ -398,9 +398,9 @@ def get_agent() -> Agent:
   <a class="skip-link" href="#main-content">跳到主内容</a>
 
   <header class="app-header">
-    <a class="app-brand" href="#/chat" aria-label="Agent 学习助手首页">
+    <a class="app-brand" href="#/chat" aria-label="Emibot 首页">
       <span class="app-brand__mark" aria-hidden="true"><svg>...</svg></span>
-      <span class="app-brand__name">Agent 学习助手</span>
+      <span class="app-brand__name">Emibot</span>
     </a>
     <span class="app-header__divider" aria-hidden="true"></span>
     <h1 class="app-header__title" id="page-title">对话</h1>
@@ -449,7 +449,7 @@ def get_agent() -> Agent:
 7.4.1 无 hash 或 hash 为空时，用 `history.replaceState` 写入 `#/chat`，不新增历史记录。
 7.4.2 无法识别的 hash 同样替换为 `#/chat`。
 7.4.3 导航项当前页使用 `aria-current="page"` 并加 `.is-active`。
-7.4.4 `document.title` 更新为 `<页面标题> · Agent 学习助手`。
+7.4.4 `document.title` 更新为 `<页面标题> · Emibot`。
 
 ### 7.5 页面切换
 
@@ -720,7 +720,7 @@ def get_agent() -> Agent:
 
 8.4.1 对齐的部分：深色配色（背景、表面、主色、文本层级）、50px 顶栏、235px 侧栏、8px 基础圆角、导航选中用主色、内容区最大宽度、消息区 760px 级别的阅读宽度。
 8.4.2 有意不同的部分：
-- AstrBot 在对话页隐藏侧栏；本项目按 Intent.md 2.6 始终保留侧栏。
+- AstrBot 在对话页隐藏侧栏；本项目按 A1.3 始终保留侧栏。
 - AstrBot 的 Agent 消息带头像且气泡透明；本项目按用户决定不显示头像，Agent 消息改为 `surface` 卡片以保证可辨识。
 - 不使用 Vuetify、Material Design Icons、主题切换、语言切换、登录、更新日志、文档入口。
 - 顶栏不显示全局搜索、通知、用户菜单。
@@ -759,10 +759,10 @@ def get_agent() -> Agent:
 
 | 顺序 | 分支 | 内容 | 验收 |
 |---|---|---|---|
-| 1 | `feature/app-shell` | Python 服务骨架、配置、健康检查、静态托管；前端外壳、设计令牌、侧栏导航、顶栏、四个占位页、hash 路由；对话页显示空状态占位 | Intent 6.1、6.2、6.10 |
+| 1 | `feature/app-shell` | Python 服务骨架、配置、健康检查、静态托管；前端外壳、设计令牌、侧栏导航、顶栏、四个占位页、hash 路由；对话页显示空状态占位 | A1.1 到 A1.9 |
 | 2 | `feature/mock-agent` | Agent 协议、mock 生成器、工厂、`POST /api/chat` SSE；用命令行验证流式事件 | 第 11.3 节的接口冒烟 |
-| 3 | `feature/chat-window` | 对话页完整实现：消息列表、气泡、时间戳、输入区、发送队列、SSE 接入、逐字渲染、自动滚动 | Intent 6.3 到 6.8 |
-| 4 | `feature/first-release` | 错误处理与空状态收尾、响应式、可访问性、README 与 Memory 更新、第一版全量验收 | Intent 6.1 到 6.10 全量回归 |
+| 3 | `feature/chat-window` | 对话页完整实现：消息列表、气泡、时间戳、输入区、发送队列、SSE 接入、逐字渲染、自动滚动 | A2.1 到 A2.9 |
+| 4 | `feature/first-release` | 错误处理与空状态收尾、响应式、可访问性、README 与 Memory 更新、第一版全量验收 | A1.1 到 A5.5 全量回归 |
 
 10.2.1 第 1 个功能中的对话页只放空状态文案，不放输入框；第 3 个功能再替换为完整对话页，避免把输入交互提前实现。
 10.2.2 不允许把两个功能合并在一个分支；发现范围变大时，拆出新分支并在 Memory.md 记录。
@@ -826,18 +826,18 @@ def get_agent() -> Agent:
 
 ### 11.1 Intent 验收标准映射
 
-| Intent | 验证动作 | 所属功能 |
+| 需求编号 | 验证动作 | 所属功能 |
 |---|---|---|
-| 6.1 | 执行启动命令，打开 `http://127.0.0.1:8000/`，确认顶栏、侧栏、内容区同时存在 | app-shell |
-| 6.2 | 依次点击五个导航项，观察 hash、页面标题、内容变化；直接用根地址打开时默认进入 `#/chat` | app-shell |
-| 6.3 | 输入"你好"并发送，用户气泡立即出现，输入框清空 | chat-window |
-| 6.4 | 观察 Agent 回复在 1 到 4 秒内逐块出现，至少能分辨三次以上的增量 | chat-window |
-| 6.5 | 连续快速发送三条消息，检查气泡顺序、时间戳顺序与控制台 | chat-window |
-| 6.6 | 清空输入框、只输入空格，发送按钮均为禁用态 | chat-window |
-| 6.7 | 检查每条消息下方均有 `YYYY-MM-DD HH:mm` 时间戳 | chat-window |
-| 6.8 | 流式回复期间继续输入并发送，输入框不冻结 | chat-window |
-| 6.9 | 代码审查：`api/chat.py` 不引用 `MockAgent`；替换点只有 `agent/factory.py` | mock-agent / first-release |
-| 6.10 | 打开四个占位页，确认空状态提示、无报错、无业务按钮 | app-shell |
+| A1.2、A1.3 | 执行启动命令，打开 `http://127.0.0.1:8000/`，确认顶栏、侧栏、内容区同时存在 | app-shell |
+| A1.4、A1.5、A1.6 | 依次点击五个导航项，观察 hash、页面标题、内容变化；直接用根地址打开时默认进入 `#/chat` | app-shell |
+| A2.3 | 输入"你好"并发送，用户气泡立即出现，输入框清空 | chat-window |
+| A4.1 | 观察 Agent 回复在 1 到 4 秒内逐块出现，至少能分辨三次以上的增量 | chat-window |
+| A2.5 | 连续快速发送三条消息，检查气泡顺序、时间戳顺序与控制台 | chat-window |
+| A2.2 | 清空输入框、只输入空格，发送按钮均为禁用态 | chat-window |
+| A2.6 | 检查每条消息下方均有 `YYYY-MM-DD HH:mm` 时间戳 | chat-window |
+| A2.9 | 流式回复期间继续输入并发送，输入框不冻结 | chat-window |
+| A3.2 | 代码审查：`api/chat.py` 不引用 `MockAgent`；替换点只有 `agent/factory.py` | mock-agent / first-release |
+| A1.7 | 打开四个占位页，确认空状态提示、无报错、无业务按钮 | app-shell |
 
 ### 11.2 通用验收环境
 

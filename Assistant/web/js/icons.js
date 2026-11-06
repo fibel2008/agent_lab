@@ -1,0 +1,11 @@
+// 内联 SVG symbol 的 ID 常量定义
+
+export const ICONS = Object.freeze({
+  BRAND: 'icon-brand',
+  CHAT: 'icon-chat',
+  DATABASE: 'icon-database',
+  MAIL: 'icon-mail',
+  DEVICE: 'icon-device',
+  SETTINGS: 'icon-settings',
+  SEND: 'icon-send',
+});
