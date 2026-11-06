@@ -123,3 +123,17 @@ class MessageResponse(BaseModel):
     error_code: Optional[str] = None
     error_message: Optional[str] = None
     created_at: str
+
+
+class AbortChatRequest(BaseModel):
+    """POST /api/chat/abort 请求体校验模型。"""
+
+    session_id: str = Field(..., min_length=1, description="需要中断生成的会话 ID")
+
+
+class SendOnlineMessageResponse(BaseModel):
+    """POST /api/sessions/{session_id}/messages 成功响应模型。"""
+
+    task_id: str
+    message_id: str
+    status: Literal["running"] = "running"

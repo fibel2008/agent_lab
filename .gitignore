@@ -31,3 +31,6 @@ Archive/
 .idea/
 .DS_Store
 Thumbs.db
+
+# 临时脚本
+scratch/
