@@ -84,6 +84,32 @@
               <h2 class="chat__empty-title">开始和 Agent 对话</h2>
               <p class="chat__empty-text">当前回复由本地 mock 生成，用来验证对话界面与流式输出。</p>
             </div>
+            <div class="chat__messages" id="messages"></div>
+          </div>
+          <div class="chat__composer">
+            <p class="composer__queue" id="composer-queue" hidden></p>
+            <form class="composer" id="composer">
+              <div class="composer__row">
+                <textarea
+                  class="composer__input"
+                  id="composer-input"
+                  rows="1"
+                  maxlength="4000"
+                  placeholder="给 Emibot 发送消息..."
+                  aria-label="输入消息"
+                ></textarea>
+                <button
+                  class="composer__send"
+                  id="send-button"
+                  type="submit"
+                  disabled
+                  aria-label="发送消息"
+                >
+                  <svg viewBox="0 0 24 24"><use href="#icon-send"></use></svg>
+                </button>
+              </div>
+            </form>
+            <p class="composer__hint">Enter 发送 · Shift + Enter 换行</p>
           </div>
         </div>
       </section>

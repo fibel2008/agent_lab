@@ -125,6 +125,12 @@
   flex-direction: column;
 }
 
+.view--chat {
+  max-width: 100%;
+  padding: 0;
+  margin: 0;
+}
+
 /* 平板断点：768px ~ 1023px 侧栏收为 72px 图标栏 */
 @media (max-width: 1023px) {
   .app-sidebar {
@@ -151,6 +157,10 @@
   .view {
     padding: var(--space-5);
   }
+
+  .view--chat {
+    padding: 0;
+  }
 }
 
 /* 手机断点：< 768px 侧栏收为 64px 图标栏，顶栏隐藏品牌名与版本号 */
@@ -169,7 +179,6 @@
   }
 
   .view--chat {
-    padding-left: 0;
-    padding-right: 0;
+    padding: 0;
   }
 }

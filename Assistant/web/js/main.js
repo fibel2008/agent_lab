@@ -1,8 +1,9 @@
-// 前端入口：构建侧栏导航并初始化哈希路由
+// 前端入口：构建侧栏导航并初始化哈希路由与对话主窗口
 
 import { createSvgIcon } from './dom.js';
 import { initRouter } from './router.js';
 import { ROUTES } from './routes.js';
+import { initChatView } from './views/chat.js';
 import { renderPlaceholder } from './views/placeholder.js';
 
 function buildNavList(navListEl) {
@@ -39,6 +40,7 @@ function bootstrap() {
   const viewPlaceholderEl = document.getElementById('view-placeholder');
 
   buildNavList(navListEl);
+  initChatView();
 
   initRouter({
     navListEl,
