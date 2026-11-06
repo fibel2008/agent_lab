@@ -64,6 +64,8 @@ function bootstrap() {
       }
     },
   });
+
+  window.__emibot_ready = true;
 }
 
 bootstrap();

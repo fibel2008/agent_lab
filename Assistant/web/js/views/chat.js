@@ -1,10 +1,19 @@
-// 对话主窗口与会话列表视图：多会话管理、草稿保留与丢弃、DOM 渲染与流式响应驱动
+// 对话主窗口与会话列表视图：多会话管理、双形态切换、草稿保留与丢弃、DOM 渲染与流式响应驱动
 
-import { streamChat } from '../api.js';
+import {
+  checkConfigStatus,
+  createOnlineSession,
+  deleteOnlineSession,
+  fetchOnlineMessages,
+  fetchOnlineSessions,
+  renameOnlineSession,
+  streamChat,
+} from '../api.js';
 import { createSvgIcon, el, formatTimestamp, isNearBottom, scrollToBottom } from '../dom.js';
 import {
   abortStreaming,
   addAgentPlaceholder,
+  addOnlineSessionToStore,
   addUserMessage,
   clearDraftText,
   clearQueueForSession,
@@ -18,14 +27,22 @@ import {
   getActiveMessages,
   getActiveSession,
   getActiveSessionId,
+  getCurrentDraft,
   getDraftText,
   getHistorySnapshot,
+  getMode,
   getQueueLength,
+  getSessionDraft,
   getSessions,
   isStreaming,
   renameSession,
   setCurrentAbortController,
+  setCurrentDraft,
   setDraftText,
+  setMode,
+  setOnlineSessions,
+  setSessionDraft,
+  setSessionMessages,
   setStreaming,
   switchSession,
   updateMessage,
@@ -33,6 +50,8 @@ import {
 
 let chatScrollEl = null;
 let chatEmptyEl = null;
+let chatEmptyTitleEl = null;
+let chatEmptyTextEl = null;
 let messagesEl = null;
 let composerFormEl = null;
 let composerInputEl = null;
@@ -44,6 +63,13 @@ let chatSessionsEl = null;
 let collapseSessionsBtnEl = null;
 let expandSessionsBtnEl = null;
 
+// 形态切换与提示条元素
+let modeToggleEl = null;
+let modeLabelEl = null;
+let chatBannerEl = null;
+let chatBannerTextEl = null;
+let chatBannerCloseEl = null;
+
 let isComposing = false;
 let shouldAutoScroll = true;
 let editingSessionId = null;
@@ -53,6 +79,8 @@ let userCollapsePreference = null;
 export function initChatView() {
   chatScrollEl = document.getElementById('chat-scroll');
   chatEmptyEl = document.getElementById('chat-empty');
+  chatEmptyTitleEl = document.getElementById('chat-empty-title');
+  chatEmptyTextEl = document.getElementById('chat-empty-text');
   messagesEl = document.getElementById('messages');
   composerFormEl = document.getElementById('composer');
   composerInputEl = document.getElementById('composer-input');
@@ -63,6 +91,12 @@ export function initChatView() {
   chatSessionsEl = document.getElementById('chat-sessions');
   collapseSessionsBtnEl = document.getElementById('collapse-sessions-btn');
   expandSessionsBtnEl = document.getElementById('expand-sessions-btn');
+
+  modeToggleEl = document.getElementById('mode-toggle');
+  modeLabelEl = document.getElementById('mode-label');
+  chatBannerEl = document.getElementById('chat-banner');
+  chatBannerTextEl = document.getElementById('chat-banner-text');
+  chatBannerCloseEl = document.getElementById('chat-banner-close');
 
   if (!composerInputEl || !composerFormEl) {
     return;
@@ -89,14 +123,7 @@ export function initChatView() {
 
   // 2. 统一草稿实时存取：键入即存入当前活动目标
   composerInputEl.addEventListener('input', () => {
-    if (getActiveSessionId() === null) {
-      setDraftText(composerInputEl.value);
-    } else {
-      const active = getActiveSession();
-      if (active) {
-        active.draft = composerInputEl.value;
-      }
-    }
+    setCurrentDraft(composerInputEl.value);
     adjustInputHeight();
     syncSendButtonState();
   });
@@ -135,7 +162,20 @@ export function initChatView() {
     });
   }
 
-  // 7. 会话侧栏收起与展开
+  // 7. 形态切换点击 (B1_1_1, B1_1_2, B1_1_3)
+  if (modeToggleEl) {
+    modeToggleEl.addEventListener('click', () => {
+      handleModeToggle();
+    });
+  }
+
+  if (chatBannerCloseEl) {
+    chatBannerCloseEl.addEventListener('click', () => {
+      hideBanner();
+    });
+  }
+
+  // 8. 会话侧栏收起与展开
   const mediaQuery = window.matchMedia('(max-width: 1023px)');
 
   function applyResponsiveCollapse(matches) {
@@ -150,7 +190,6 @@ export function initChatView() {
     }
   }
 
-  // 默认不收缩，当窗口页面不足（< 1024px）时收缩
   applyResponsiveCollapse(mediaQuery.matches);
 
   mediaQuery.addEventListener('change', (e) => {
@@ -176,6 +215,106 @@ export function initChatView() {
   renderActiveSession();
   resetInputHeight();
   syncSendButtonState();
+}
+
+function showBanner(message) {
+  if (chatBannerEl && chatBannerTextEl) {
+    chatBannerTextEl.textContent = message;
+    chatBannerEl.hidden = false;
+  }
+}
+
+function hideBanner() {
+  if (chatBannerEl) {
+    chatBannerEl.hidden = true;
+  }
+}
+
+async function handleModeToggle() {
+  const currentMode = getMode();
+
+  if (currentMode === 'offline') {
+    // 准备切入在线形态：首先进行密钥预检 (B1_1_2)
+    try {
+      const status = await checkConfigStatus();
+      if (!status.has_api_key) {
+        showBanner('未检测到模型密钥，请在本地环境变量配置并重启服务后重试。');
+        return;
+      }
+    } catch (err) {
+      showBanner(`检查服务状态失败: ${err.message || '请确认后端服务正在运行'}`);
+      return;
+    }
+
+    // 密钥配置正常，允许切入在线模式 (B1_1_3)
+    hideBanner();
+    if (isStreaming()) {
+      abortStreaming();
+    }
+
+    setMode('online');
+    if (modeToggleEl) {
+      modeToggleEl.classList.add('is-online');
+    }
+    if (modeLabelEl) {
+      modeLabelEl.textContent = '在线模式';
+    }
+
+    // 更新空状态文案
+    if (chatEmptyTitleEl) {
+      chatEmptyTitleEl.textContent = '开始和 Agent 对话';
+    }
+    if (chatEmptyTextEl) {
+      chatEmptyTextEl.textContent = '当前处于在线模式，回复由真实大模型生成，会话与消息保存在本地数据库。';
+    }
+
+    // 拉取在线会话列表
+    try {
+      const onlineSessions = await fetchOnlineSessions();
+      setOnlineSessions(onlineSessions);
+    } catch (err) {
+      showBanner(`加载在线会话失败: ${err.message}`);
+    }
+
+    renderSessionList();
+    renderActiveSession();
+
+    // 切换后落在空白草稿态，输入框内容予以保留 (B1.7, B1_1_3)
+    if (composerInputEl) {
+      composerInputEl.value = getCurrentDraft();
+      adjustInputHeight();
+      syncSendButtonState();
+      composerInputEl.focus();
+    }
+  } else {
+    // 从在线切回离线形态
+    hideBanner();
+    setMode('offline');
+    if (modeToggleEl) {
+      modeToggleEl.classList.remove('is-online');
+    }
+    if (modeLabelEl) {
+      modeLabelEl.textContent = '离线模式';
+    }
+
+    if (chatEmptyTitleEl) {
+      chatEmptyTitleEl.textContent = '开始和 Agent 对话';
+    }
+    if (chatEmptyTextEl) {
+      chatEmptyTextEl.textContent = '当前回复由本地 mock 生成，用来验证对话界面与流式输出。';
+    }
+
+    renderSessionList();
+    renderActiveSession();
+
+    // 保留草稿文字
+    if (composerInputEl) {
+      composerInputEl.value = getCurrentDraft();
+      adjustInputHeight();
+      syncSendButtonState();
+      composerInputEl.focus();
+    }
+  }
 }
 
 export function setSessionsCollapsed(collapsed) {
@@ -263,7 +402,6 @@ function renderSessionList() {
     return;
   }
 
-  // 若当前正在行内重命名，禁止全量重绘列表破坏编辑中的 input 节点
   if (editingSessionId !== null) {
     return;
   }
@@ -372,7 +510,6 @@ function startRenameSession(sessionId, itemEl, titleSpan, actionsDiv) {
     },
   });
 
-  // 阻止 input 点击冒泡触发会话切换
   input.addEventListener('click', (event) => {
     event.stopPropagation();
   });
@@ -385,7 +522,7 @@ function startRenameSession(sessionId, itemEl, titleSpan, actionsDiv) {
     isInputComposing = false;
   });
 
-  function commitRename() {
+  async function commitRename() {
     if (isCommitted) {
       return;
     }
@@ -393,6 +530,13 @@ function startRenameSession(sessionId, itemEl, titleSpan, actionsDiv) {
 
     const newTitle = input.value.trim().replace(/\s+/g, ' ');
     if (newTitle && newTitle !== session.title) {
+      if (getMode() === 'online') {
+        try {
+          await renameOnlineSession(sessionId, newTitle);
+        } catch (err) {
+          showBanner(`重命名会话失败: ${err.message}`);
+        }
+      }
       renameSession(sessionId, newTitle);
       titleSpan.textContent = newTitle;
       itemEl.title = newTitle;
@@ -438,38 +582,38 @@ function startRenameSession(sessionId, itemEl, titleSpan, actionsDiv) {
 }
 
 // 删除会话
-function handleDeleteSession(sessionId) {
-  // 1. 流式中止与死锁保护
+async function handleDeleteSession(sessionId) {
   if (isStreaming()) {
     abortStreaming();
     syncSendButtonState();
   }
 
-  // 2. 清理属于该会话的所有排队项
   clearQueueForSession(sessionId);
   syncQueueUI();
 
-  // 3. 记录删除前活动会话状态
   const wasActive = getActiveSessionId() === sessionId;
 
-  // 4. 从 store 移除会话
-  deleteSession(sessionId);
+  if (getMode() === 'online') {
+    try {
+      await deleteOnlineSession(sessionId);
+    } catch (err) {
+      showBanner(`删除在线会话失败: ${err.message}`);
+    }
+  }
 
-  // 5. 重新渲染会话列表
+  deleteSession(sessionId);
   renderSessionList();
 
-  // 6. 若删除的是当前活动会话，页面落回空白草稿会话
   if (wasActive) {
     enterDraft();
     if (composerInputEl) {
-      composerInputEl.value = '';
+      composerInputEl.value = getCurrentDraft();
       resetInputHeight();
       syncSendButtonState();
     }
     renderActiveSession();
   }
 
-  // 7. 若队列中还有属于其他会话的请求，继续调度
   processQueue();
 }
 
@@ -478,7 +622,7 @@ function handleNewChat() {
   const currentActiveId = getActiveSessionId();
 
   if (currentActiveId === null) {
-    // 分支一：当前本处于空白草稿态，再次点击"新建对话" -> 彻底丢弃旧草稿文字
+    // 处于空白草稿态再次点击新建 -> 丢弃旧草稿 (A6.11)
     clearDraftText();
     if (composerInputEl) {
       composerInputEl.value = '';
@@ -486,7 +630,7 @@ function handleNewChat() {
       syncSendButtonState();
     }
   } else {
-    // 分支二：从既有会话点击"新建对话" -> 进入草稿态，并恢复此前暂存的草稿文字（若有）
+    // 从既有会话点击新建 -> 回到空白草稿态并恢复暂存草稿
     enterDraft();
     if (composerInputEl) {
       composerInputEl.value = getDraftText();
@@ -495,7 +639,6 @@ function handleNewChat() {
     }
   }
 
-  // 取消列表所有激活高亮
   if (chatSessionsListEl) {
     const items = chatSessionsListEl.querySelectorAll('.session-item');
     items.forEach((item) => item.classList.remove('is-active'));
@@ -508,14 +651,13 @@ function handleNewChat() {
 }
 
 // 切换会话
-function handleSwitchSession(sessionId) {
+async function handleSwitchSession(sessionId) {
   if (sessionId === getActiveSessionId()) {
     return;
   }
 
   switchSession(sessionId);
 
-  // 刷新会话列表激活态
   if (chatSessionsListEl) {
     const items = chatSessionsListEl.querySelectorAll('.session-item');
     items.forEach((item) => {
@@ -523,13 +665,20 @@ function handleSwitchSession(sessionId) {
     });
   }
 
-  // 重绘目标会话消息列表
+  // 若处于在线形态，拉取持久化消息
+  if (getMode() === 'online') {
+    try {
+      const messages = await fetchOnlineMessages(sessionId);
+      setSessionMessages(sessionId, messages);
+    } catch (err) {
+      showBanner(`加载会话历史失败: ${err.message}`);
+    }
+  }
+
   renderActiveSession();
 
-  // 恢复目标会话的未发送草稿文字
-  const targetSession = getActiveSession();
   if (composerInputEl) {
-    composerInputEl.value = targetSession?.draft || '';
+    composerInputEl.value = getSessionDraft(sessionId);
     adjustInputHeight();
     syncSendButtonState();
     composerInputEl.focus();
@@ -564,8 +713,11 @@ function renderActiveSession() {
 function createMessageNode(message) {
   const isUser = message.role === 'user';
   const roleClass = isUser ? 'msg--user' : 'msg--agent msg--assistant';
+  const isInterrupted = message.status === 'interrupted';
+  const isError = message.status === 'error';
+
   const article = el('article', {
-    className: `msg ${roleClass}${message.status === 'streaming' ? ' is-streaming' : ''}${message.status === 'error' ? ' is-error' : ''}`,
+    className: `msg ${roleClass}${message.status === 'streaming' ? ' is-streaming' : ''}${isError ? ' is-error' : ''}${isInterrupted ? ' is-interrupted' : ''}`,
     attrs: {
       'data-message-id': message.id,
     },
@@ -582,11 +734,20 @@ function createMessageNode(message) {
     bubble.appendChild(waiting);
   }
 
+  const displayText = isError && message.errorMessage ? message.errorMessage : (message.content || '');
   const text = el('p', {
     className: 'msg__text',
-    text: message.content || '',
+    text: displayText,
   });
   bubble.appendChild(text);
+
+  if (isInterrupted) {
+    const badge = el('span', {
+      className: 'badge badge--interrupted',
+      text: '已中断',
+    });
+    bubble.appendChild(badge);
+  }
 
   const createdAt = message.createdAt instanceof Date ? message.createdAt : new Date(message.createdAt);
   const time = el('time', {
@@ -602,7 +763,7 @@ function createMessageNode(message) {
   return article;
 }
 
-function handleSubmit() {
+async function handleSubmit() {
   if (!composerInputEl) {
     return;
   }
@@ -615,12 +776,25 @@ function handleSubmit() {
 
   // 若处于空白草稿态，发出首条消息时正式创建新会话
   if (!activeSession) {
-    activeSession = createSessionFromDraft(text);
+    if (getMode() === 'online') {
+      const folded = text.replace(/\s+/g, ' ');
+      const title = Array.from(folded).slice(0, 10).join('') || '新会话';
+      try {
+        const created = await createOnlineSession({ title });
+        activeSession = addOnlineSessionToStore(created);
+        switchSession(activeSession.id);
+      } catch (err) {
+        showBanner(`创建在线会话失败: ${err.message}`);
+        return;
+      }
+    } else {
+      activeSession = createSessionFromDraft(text);
+    }
   }
 
   // 1. 用户消息追加至对应会话内存，并清空当前会话已保存草稿
   const userMessage = addUserMessage(text, activeSession.id);
-  activeSession.draft = '';
+  setSessionDraft(activeSession.id, '');
 
   // 2. 清空输入框并重置高度与焦点
   composerInputEl.value = '';
@@ -642,7 +816,7 @@ function handleSubmit() {
     scrollToBottom(chatScrollEl);
   }
 
-  // 4. 对应会话内存追加状态为 streaming 的 Agent 占位消息并上屏
+  // 4. 追加状态为 streaming 的 Agent 占位消息并上屏
   const agentMessage = addAgentPlaceholder(null, activeSession.id);
   const agentNode = createMessageNode(agentMessage);
   if (messagesEl) {
@@ -652,7 +826,6 @@ function handleSubmit() {
     scrollToBottom(chatScrollEl);
   }
 
-  // 会话产生最新消息，按最新消息时间重新排布会话列表
   renderSessionList();
 
   // 5. 截取历史快照并入队
@@ -683,7 +856,6 @@ async function processQueue() {
   const { sessionId, messageId, snapshot } = req;
   const session = findSession(sessionId);
   if (!session) {
-    // 若会话在排队期间已被删除，跳过该项继续调度下一项
     processQueue();
     return;
   }
@@ -698,8 +870,6 @@ async function processQueue() {
 
   const controller = new AbortController();
   setCurrentAbortController(controller);
-
-  let firstDeltaReceived = false;
 
   try {
     await streamChat({
@@ -741,10 +911,8 @@ async function processQueue() {
           return;
         }
 
-        // 1. 无条件更新对应会话内存
         agentMessage.content += text;
 
-        // 2. 若用户当前停留在该会话，动态定位 DOM 节点并更新
         if (getActiveSessionId() === sessionId && messagesEl) {
           const cardNode = messagesEl.querySelector(
             `[data-message-id="${agentMessage.id}"], [data-message-id="${messageId}"]`,
@@ -827,7 +995,6 @@ async function processQueue() {
     setStreaming(false);
     setCurrentAbortController(null);
     syncSendButtonState();
-    // 递归调度队列中下一项
     processQueue();
   }
 }
