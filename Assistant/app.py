@@ -6,6 +6,7 @@ import mimetypes
 from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
 
+from .api.chat import router as chat_router
 from .api.health import router as health_router
 from .config import APP_VERSION, WEB_DIR
 
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
         return response
 
     application.include_router(health_router)
+    application.include_router(chat_router)
     application.mount("/", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
     return application
 

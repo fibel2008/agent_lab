@@ -12,6 +12,7 @@
 2026-11-06：完成 `.venv`（Python 3.12.13）创建与依赖安装，`feature/app-shell` 分支开发并通过 Fibel 验收，项目与应用名称统一重命名为 `Emibot`。
 2026-11-06：Intent.md 重构为编号需求列表（A1.0 起），需求状态与当前实现进度对齐；Spec 中的验收映射同步改为新编号。
 2026-11-06：Spec.md 对齐 Intent.md 完成重构，内容收敛为"目录结构、架构、接口与数据规定、需求列表"四部分，并将每条需求拆解为 `Ax_y_z` 编号子项。
+2026-11-06：完成 `feature/mock-agent` 阶段开发：定义 ChatMessage 与 Agent 协议，实现确定性关键词匹配 MockAgent 与字符切片延时生成，提供 get_agent 单例工厂；实现 POST /api/chat SSE 流式接口与 ChatRequest 请求校验，动态关联健康检查端点并完成全链路 HTTP 与异常冒烟验证。
 
 ## 2. 已做决定及理由
 
@@ -35,6 +36,8 @@
 2.18 2026-11-06 应用名称由"Agent 学习助手"重命名为"Emibot"，顶栏品牌名、页面标题后缀、后端启动提示与文档标题同步更新。理由：Fibel 在验收 `feature/app-shell` 时确定正式名称。
 2.19 2026-11-06 Spec.md 重构为"目录结构、架构、接口与数据规定、需求列表"四部分，每条 Intent 需求 `A{x}.{y}` 拆解为 `Ax_y_z` 实现子项（含状态、需求描述、详细方案设计），编号固定不复用、废弃项留号标注。理由：Fibel 要求让每条业务需求都能精确追踪到具体的方案设计子项。
 2.20 2026-11-06 在 A1.2 追加一键启动需求并拆解为 `A1_2_3`：根目录新增 `start.bat`，通过 `ASSISTANT_OPEN_BROWSER=1` 触发后端在 `/api/health` 就绪后调用 `webbrowser.open` 自动弹出系统默认浏览器。理由：Fibel 要求在文件夹中直接打开文件即可启动服务并弹出网页，轮询健康检查就绪后再打开浏览器可避免端口未监听时的连接失败页。
+2.21 2026-11-06 MockAgent 采用 5 条确定性关键词匹配规则，回复文本严格限定为 60~200 字纯中文、无 Markdown 与无 emoji，首块文本无等待发出、后续切片按 STREAM_DELAY_MS 异步延时推送。理由：满足 A3.1、A3.2 与 A4.1 对稳定打字机体验和离线确定性回复的规格要求。
+2.22 2026-11-06 POST /api/chat 使用 FastAPI StreamingResponse 返回 text/event-stream，显式下发 Cache-Control: no-cache 与 X-Accel-Buffering: no；流中途发生未捕获异常时下发 event: error 事件通知客户端。理由：规范 SSE 事件协议，杜绝中间代理缓存流式切片，赋予前端明确的异常捕获能力。
 
 ## 3. 踩过的坑
 
@@ -46,6 +49,6 @@
 
 ## 4. 下一步
 
-4.1 `feature/app-shell` 已验收通过并合回 `main`，下一步从 `main` 切出 `feature/mock-agent`。
-4.2 从合并后的 `main` 切出 `feature/mock-agent`，按 Spec 10.3 实现 Agent 协议、Mock 回复生成器与 `/api/chat` SSE 接口。
-4.3 每个功能人工验收后 `--no-ff` 合并，更新本文件，并把当前分支与 `main` 推送到 `origin`。
+4.1 `feature/mock-agent` 完成验收后 `--no-ff` 合并回 `main`，推送到 `origin`。
+4.2 从合并后的 `main` 切出 `feature/chat-window` 分支，按 Spec 第四部分实现前端对话主窗口、消息气泡渲染、时间戳、发送排队队列与 SSE 客户端。
+4.3 保持提交后推送当前分支、合并后推送 `main` 的 Git 同步约定。
