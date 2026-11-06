@@ -547,7 +547,6 @@ function handleSubmit() {
   // 若处于空白草稿态，发出首条消息时正式创建新会话
   if (!activeSession) {
     activeSession = createSessionFromDraft(text);
-    renderSessionList();
   }
 
   // 1. 用户消息追加至对应会话内存，并清空当前会话已保存草稿
@@ -583,6 +582,9 @@ function handleSubmit() {
   if (chatScrollEl) {
     scrollToBottom(chatScrollEl);
   }
+
+  // 会话产生最新消息，按最新消息时间重新排布会话列表
+  renderSessionList();
 
   // 5. 截取历史快照并入队
   const snapshot = getHistorySnapshot(30, activeSession.id);

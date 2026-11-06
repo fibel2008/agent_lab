@@ -24,7 +24,30 @@ const state = {
   currentAbortController: null, // 当前流式请求的 AbortController 实例
 };
 
+export function getSessionLatestTime(session) {
+  if (session && session.messages && session.messages.length > 0) {
+    const lastMsg = session.messages[session.messages.length - 1];
+    const time = lastMsg.createdAt instanceof Date ? lastMsg.createdAt.getTime() : new Date(lastMsg.createdAt).getTime();
+    if (!Number.isNaN(time)) {
+      return time;
+    }
+  }
+  const fallback = session?.updatedAt || session?.createdAt;
+  if (fallback) {
+    const time = fallback instanceof Date ? fallback.getTime() : new Date(fallback).getTime();
+    if (!Number.isNaN(time)) {
+      return time;
+    }
+  }
+  return 0;
+}
+
+export function sortSessions() {
+  state.sessions.sort((a, b) => getSessionLatestTime(b) - getSessionLatestTime(a));
+}
+
 export function getSessions() {
+  sortSessions();
   return state.sessions;
 }
 
@@ -80,6 +103,7 @@ export function createSessionFromDraft(firstUserContent) {
   };
 
   state.sessions.unshift(session);
+  sortSessions();
   state.activeSessionId = session.id;
   state.draftText = '';
   return session;
@@ -147,6 +171,7 @@ export function addUserMessage(content, targetSessionId = null) {
 
   session.messages.push(message);
   session.updatedAt = new Date();
+  sortSessions();
   return message;
 }
 
@@ -167,6 +192,7 @@ export function addAgentPlaceholder(customId = null, targetSessionId = null) {
 
   session.messages.push(message);
   session.updatedAt = new Date();
+  sortSessions();
   return message;
 }
 
@@ -185,6 +211,9 @@ export function updateMessage(id, patch, targetSessionId = null) {
     return null;
   }
   Object.assign(target, patch);
+  if (patch.createdAt) {
+    sortSessions();
+  }
   return target;
 }
 
