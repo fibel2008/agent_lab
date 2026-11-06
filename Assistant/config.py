@@ -29,6 +29,34 @@ def _configure_logger() -> None:
 _configure_logger()
 
 
+def _load_dotenv() -> None:
+    """轻量解析项目根目录的 .env 文件并加载至环境变量（不覆盖已有系统环境变量）。"""
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if not env_path.is_file():
+        return
+    try:
+        with open(env_path, "r", encoding="utf-8") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                key = key.strip()
+                val = val.strip()
+                if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                    val = val[1:-1]
+                if key and key not in os.environ:
+                    os.environ[key] = val
+        logger.info("已自动从根目录 .env 文件加载本地环境变量")
+    except Exception as exc:
+        logger.warning("读取 .env 文件失败: %s", exc)
+
+
+_load_dotenv()
+
+
 def _read_int_env(name: str, default: int, min_value: int = 0) -> int:
     """读取整数环境变量，非法值或小于下限时回退默认值并打印警告。"""
     raw = os.environ.get(name)
