@@ -101,23 +101,28 @@ FastAPI（Assistant/app.py）
 
 1. 浏览器加载 `/`，`main.js` 根据 `routes.js` 生成侧栏导航，`router.js` 解析 hash；无 hash 或非法 hash 时替换为 `#/chat`。
 2. 路由进入对话页（`#/chat`）时，左侧主导航自动收缩为仅显示图标的缩略态，紧邻展开会话列表栏；首次加载默认处于未创建的空白草稿态（`activeSessionId = null`），输入框可用，消息区显示空状态。
-3. 用户在输入框输入未发送文字：
-   - 若当前处于草稿态，文字暂存至草稿状态；若处于既有会话，文字暂存至该会话的草稿字段。
-   - 离开对话页切换到其他导航页面再返回时，输入框精准恢复离开前对应会话（或草稿）已输入的未发送文字。
-4. 用户在空白草稿态按 Enter 或点击发送首条消息时：
-   - 前端正式创建新会话，自动提取首条消息前 10 个字作为标题，加入会话列表头部并设为当前活动会话。
-   - 立即追加用户消息与时间戳，清空输入框并滚到底部。
-5. 前端对截至当前用户消息的历史做快照并入队；若当前无进行中的流式回复，立即出队执行下一条。
-6. 前端追加一条状态为 `streaming` 的 Agent 占位消息（显示三点等待动画），调用 `POST /api/chat`。
-7. 后端校验请求体，通过 `factory.get_agent()` 取得 Agent 实例，返回 `text/event-stream`。
-8. 前端依次处理 `meta`、`delta`、`done`（或 `error`）事件，将增量文本逐块写入当前 Agent 消息节点。
-9. 单条回复结束后，若队列仍有待处理项则继续第 5 步，否则回到空闲状态。
-10. 会话交互流转：
-    - 点击"新建对话"：丢弃旧草稿未发送文字，进入空白草稿态；已有会话的未发送文字不受影响。
-    - 切换会话：自动保存当前会话的未发送文字，重绘目标会话的消息列表并恢复其未发送文字。
-    - 重命名：鼠标悬停触发行内编辑，保存后更新会话标题且不再被后续消息覆盖。
-    - 删除：鼠标悬停触发删除，从内存与列表移除该会话；若删除当前查看的会话，页面立即落回空白草稿态。
-11. 状态归属：会话、草稿、消息、队列、流状态仅保存在浏览器内存（`store.js`），刷新页面即清空；后端无状态；对话页 `#view-chat` DOM 常驻，切换路由仅通过 `hidden` 属性显隐。
+3. 草稿状态统一实时写入：监听输入框的 `input` 事件，每次键入实时将最新内容写入当前活动目标：
+   - 若处于空白草稿态（`activeSessionId === null`），实时写入 `store.draftText`；
+   - 若处于既有会话（`activeSessionId !== null`），实时写入对应会话的 `session.draft`；
+   - 切换会话或切离对话页时无需依赖离场钩子，切回时直接从目标对象读取回填并联动自适应高度与发送按钮状态。
+4. 用户发送消息与全局排队流转：
+   - 若在草稿态发送首条消息：自动按 `Array.from(trimmed.replace(/\s+/g, ' ')).slice(0, 10).join('')` 截取生成标题并创建新会话，设为 `activeSessionId` 并加入会话列表头部；
+   - 用户消息与时间戳立即上屏，输入框清空并聚焦；对应会话内存追加状态为 `streaming` 的 Agent 占位消息（界面显示三点等待动画）；
+   - 请求快照（含 `sessionId`、`messageId` 与历史切片）推入全局 FIFO 发送队列 `store.queue`；
+   - 全局调度并发策略：采用串行单流调度（`isStreaming` 为全局锁），若当前已有流在进行，新发送的消息在列表中正常上屏展示等待态，并在输入区显示排队提示，等待上一请求完成后自动调度出队执行。
+5. SSE 流式响应与重绘节点动态绑定：
+   - 后端通过 `POST /api/chat` 下发 `text/event-stream`；
+   - 前端接收增量 `delta` 时，首先无条件追加至内存中对应会话消息对象的 `content`；
+   - DOM 更新通过 `document.querySelector(`[data-message-id="${messageId}"]`)` 动态定位 Agent 卡片节点并写入文本（使用 `textContent`）；
+   - 切走再切回场景：若用户在流式期间切换到其他会话后再切回，视图执行全量重绘时将渲染持有相同 `data-message-id` 的最新卡片节点，后续到达的 `delta` 依然能通过选择器无缝接管并继续追加文字与滚动，彻底避免闭包 DOM 节点失效问题；若当前未停留在该会话，则静默更新内存，不触碰当前视口 DOM。
+6. 流式中断与删除保护：
+   - 每次发起流式请求时在全局保存 `currentAbortController`；
+   - 若流式进行中用户删除了当前正在输出的会话：前端立即调用 `abortController.abort()` 中止连接，将全局 `isStreaming` 重置为 `false`，清理队列中属于该会话的所有排队项，并调用 `syncSendButtonState()` 恢复发送按钮，防止状态死锁，然后调度队列中下一条请求。
+7. 会话交互与重命名安全流转：
+   - 点击"新建对话"：从既有会话点击时进入草稿态并恢复此前暂存的 `store.draftText`（若有）；只有当前本来就在草稿态时再次点击"新建对话"，才彻底清空丢弃 `store.draftText` 与输入框文字。
+   - 切换会话：直接从目标会话对象恢复其 `draft` 文字，并调用 `renderActiveSession()` 重绘消息区。
+   - 重命名防护：操作按钮与输入框绑定 `stopPropagation`；维护 `isCommitted` 标记位杜绝 Esc/Enter 后失焦触发重复保存；中文输入法组合（`isComposing`）期间 Enter 不误触保存；编辑期间局部锁定会话列表禁止全量重绘破坏输入框；标题渲染强制使用 `textContent` 防御 XSS。
+8. 状态归属：会话、草稿、消息、队列、流状态仅保存在浏览器内存（`store.js`），刷新页面即清空；后端无状态；对话页 `#view-chat` DOM 常驻，切换路由仅通过 `hidden` 属性显隐。
 
 ### 2.4 功能分支拆分
 
@@ -227,7 +232,7 @@ class Agent(Protocol):
 ```js
 {
   id: 's_<timestamp>_<rand>',
-  title: '首条消息前10字',
+  title: '首条消息前10字', // 空白折叠与Unicode安全截取后的标题
   createdAt: Date,
   updatedAt: Date,
   messages: [], // 包含的消息对象列表
@@ -239,11 +244,12 @@ class Agent(Protocol):
 
 ```js
 {
-  activeSessionId: null, // 当前活动会话 ID；为 null 时表示处于未创建的空白草稿态
-  draftText: '',         // 空白草稿态中已输入未发送的文字
-  sessions: [],          // 全部已创建会话列表（按时间降序）
-  queue: [],             // 发送队列
-  isStreaming: false     // 是否正在流式生成回复
+  activeSessionId: null,           // 当前活动会话 ID；为 null 时表示处于未创建的空白草稿态
+  draftText: '',                   // 空白草稿态中已输入未发送的文字
+  sessions: [],                    // 全部已创建会话列表（按时间降序）
+  queue: [],                       // 全局发送队列：[{ sessionId, messageId, snapshot }]
+  isStreaming: false,              // 全局流式互斥锁：是否正在流式生成回复
+  currentAbortController: null     // 当前流式请求的 AbortController 实例，用于会话删除或异常时安全中止
 }
 ```
 
@@ -271,6 +277,11 @@ class Agent(Protocol):
   description: ''
 }
 ```
+
+- 核心数据处理与安全规定：
+  - 会话标题生成规则：统一使用 `Array.from(rawContent.trim().replace(/\s+/g, ' ')).slice(0, 10).join('')`；先将换行符、制表符及连续空格折叠为单空格，再按 Unicode 码点切片，防止 emoji 等 UTF-16 代理对截断出现乱码。
+  - XSS 防御规定：所有用户输入的标题在注入 DOM 时，严禁使用 `innerHTML`，必须使用 `element.textContent` 或 `document.createTextNode` 渲染。
+  - 草稿状态写入时机：统一在输入框 `input` 事件触发时实时写入当前活动目标（草稿态存入 `store.draftText`，已有会话存入对应 `session.draft`），会话切换与路由切离时直接复用，不维护分散的时机。
 
 - 命名与格式规定：
   - Python：函数/变量 `snake_case`，类 `PascalCase`，常量 `UPPER_SNAKE_CASE`，4 空格缩进，公开函数写一行中文 docstring。
@@ -633,19 +644,29 @@ class Agent(Protocol):
      - `sessions`: 会话对象数组，每个会话结构为 `{ id: 's_<timestamp>_<rand>', title: string, createdAt: Date, updatedAt: Date, messages: [], draft: '' }`，按创建或最近活跃时间倒序排列。
      - `activeSessionId`: 当前处于活跃状态的会话 ID，取值为 `string` 或 `null`（`null` 表示当前处于未创建的空白草稿态）。
      - `draftText`: 处于空白草稿态时已输入但尚未发送的文字。
-     - `queue` 与 `isStreaming`: 保持现有发送队列快照与流状态定义。
+     - `queue`: 全局发送队列，元素为 `{ sessionId: string, messageId: string, snapshot: Array }`。
+     - `isStreaming`: 全局流式互斥锁，表示当前是否有网络请求在持续推送中。
+     - `currentAbortController`: 当前活跃的 `AbortController` 实例，供跨会话控制与删除中止。
   2. 导出多会话操作函数：`getSessions()`、`getActiveSessionId()`、`getActiveSession()`、`switchSession(sessionId)`、`getActiveMessages()`；所有数据只保留在 JavaScript 运行时内存，不读写 `localStorage`、`sessionStorage` 或 `IndexedDB`。
 
-**A6_1_2 切换会话的消息区重绘与状态隔离**
+**A6_1_2 切换会话的消息区重绘与流式动态重绑定**
 - 状态：已确认
-- 需求描述：用户在会话列表点击切换会话时，消息区立即清空并完整重新渲染目标会话的消息列表与空状态，各会话消息与顺序互不干扰。
+- 需求描述：用户在会话列表点击切换会话时，消息区立即清空并完整重新渲染目标会话的消息列表与空状态；若流式期间切换会话，多会话之间请求排队串行调度，切走再切回视图全量重绘时能无缝恢复流式节点追加，各会话消息与顺序互不干扰。
 - 详细方案设计：
   1. 在 `Assistant/web/js/views/chat.js` 实现 `renderActiveSession()`：
      - 首先清空当前 `#messages` 容器（`messagesEl.replaceChildren()`）；
      - 若当前处于空白草稿态（`activeSessionId === null`）或当前会话的 `messages` 为空数组，展示 `#chat-empty` 空状态提示；
-     - 若当前会话存在消息，隐藏 `#chat-empty`，遍历该会话的 `messages` 数组，依次调用 `appendMessageNode()` 将用户气泡与 Agent 消息卡片按序渲染至 `#messages`；
+     - 若当前会话存在消息，隐藏 `#chat-empty`，遍历该会话的 `messages` 数组，依次调用 `appendMessageNode()` 将用户气泡与 Agent 消息卡片按序渲染至 `#messages`；若其中有消息状态为 `streaming`，卡片赋予 `.is-streaming` 并渲染等待点动画与打字光标；
      - 渲染完成后调用 `scrollToBottom(chatScrollEl)` 使视图滚至最新消息。
-  2. 流式期间若发生会话切换，后台 SSE 流式写入仍作用于该请求绑定的会话消息对象，但 DOM 更新只作用于当前处于活动状态的会话，切回时全量重绘保证内容一致性。
+  2. 流式与并发排队调度策略：
+     - `isStreaming` 与 `queue` 保持全局统一调度。若会话 A 正在流式输出中，用户切至会话 B 或在草稿态发送消息，新发送的消息立即在对应会话中上屏，内存中生成状态为 `streaming` 的 Agent 占位卡片，并将请求快照 `{ sessionId, messageId, snapshot }` 推入全局队列；输入框上方展示排队等待提示；
+     - 当前请求完成（`done` 或 `error`）后，`processQueue()` 自动出队下一项并启动网络请求。
+  3. 切走再切回的 DOM 节点重绑定机制：
+     - 杜绝视图模块内部使用局部闭包变量长期持有 Agent DOM 节点；
+     - 每次收到 SSE `delta` 增量事件时：
+       a. 首先无条件更新内存对象：找到对应会话的消息对象，执行 `message.content += delta`；
+       b. 判断当前活动会话：若 `store.getActiveSessionId() === currentStreamingSessionId`（用户正在查看该会话），通过 `messagesEl.querySelector(\`[data-message-id="${messageId}"]\`)\` 动态获取当前 DOM 树上的 Agent 卡片节点并更新文本（使用 `textContent`）与智能触底滚动；
+       c. 若用户切到其他会话，DOM 查找直接跳过，只保留内存累加；当用户重新切回该会话时，`renderActiveSession()` 执行全量重绘，新生成的卡片同样具备 `data-message-id="${messageId}"`，后续到达的 `delta` 片段将立刻定位到新生成的 DOM 节点继续渲染，彻底解决重绘导致的节点失效脱节问题。
 
 ##### A6.2 对话页导航折叠
 
@@ -686,68 +707,74 @@ class Agent(Protocol):
 - 详细方案设计：
   1. 在 `.chat-sessions__header` 中提供新建对话按钮 `<button class="chat-sessions__new-btn" id="new-chat-button" type="button"><svg class="chat-sessions__new-icon" viewBox="0 0 24 24"><use href="#icon-plus"></use></svg><span>新建对话</span></button>`。
   2. 在 `Assistant/web/index.html` 的内联 SVG sprite 中增加 `icon-plus` symbol。
-  3. 页面初次加载或用户点击"新建对话"按钮时：
-     - 若当前已处于空白草稿态且输入框有文字，执行 A6.11 清空并丢弃草稿文字；
-     - 若当前处于已有会话，保存该会话未发送文字至该会话对象（A6.10）；
-     - 调用 `store.enterDraft()`，将 `activeSessionId` 设为 `null`；
+  3. 页面初次加载或用户点击"新建对话"按钮时触发 `handleNewChat()`：
+     - 若当前已处于空白草稿态（`activeSessionId === null`）：判定为丢弃旧草稿，调用 `store.clearDraftText()`，输入框清空，高度重置，禁用发送按钮；
+     - 若当前处于某一既有会话（`activeSessionId !== null`）：调用 `store.enterDraft()`，将 `activeSessionId` 设为 `null`；此时输入框回填此前暂存的 `store.draftText`（若有）并恢复发送按钮可用态；
      - 清空 `#messages` 容器并显示 `#chat-empty`，会话列表中所有条目均移除 `.is-active` 激活态；
-     - 将输入框值置空（或恢复为空草稿），高度重置为单行，禁用发送按钮，自动调用 `composerInputEl.focus()` 保持焦点就绪。
+     - 自动调用 `composerInputEl.focus()` 保持焦点就绪。
   4. 用户在草稿态发出第一条消息时，调用 `store.createSessionFromDraft(content)`：
      - 生成唯一 ID（`s_<timestamp>_<rand>`）；
-     - 自动截取首条消息前 10 字为标题（A6.5）；
+     - 自动截取首条消息前 10 字为标题（按 A6.5 码点与空白安全算法）；
      - 将新会话推入 `store.sessions` 列表最前；
      - 将 `activeSessionId` 设为该会话 ID；
      - 触发会话列表重新渲染并将该新会话置为激活高亮状态，随后将首条用户消息放入该会话并进入正常发送与回复流程。
 
 ##### A6.5 会话标题自动生成
 
-**A6_5_1 首条消息截字算法与即时标题渲染**
+**A6_5_1 码点安全切片与空白折叠生成算法**
 - 状态：已确认
-- 需求描述：会话在发出第一条用户消息时正式创建，标题自动取该条消息的前 10 个字；标题在会话出现在列表时即已生成；消息不足 10 个字时标题与消息全文一致。
+- 需求描述：会话在发出第一条用户消息时正式创建，标题自动取该条消息的前 10 个字；标题在会话出现在列表时即已生成；消息不足 10 个字时标题与消息全文一致；杜绝多行与 emoji 乱码，防御 XSS。
 - 详细方案设计：
-  1. 在 `store.js` 的 `createSessionFromDraft(firstUserContent)` 中实现标题生成算法：
-     - 过滤首尾空白字符：`const trimmed = firstUserContent.trim();`；
-     - 截取前 10 个字符：`const title = trimmed.slice(0, 10);`；
-     - 若字符串长度小于或等于 10，`slice(0, 10)` 自然保留全部文字；若大于 10 则精确截取前 10 个字。
-  2. 新会话节点插入会话列表 DOM 时，直接使用该 `title` 作为 `.session-item__title` 的文字内容，并设置 `title` HTML 属性供长文本悬停查阅完整标题；标题在节点首次出现时即确定，无后续重新生成逻辑。
+  1. 在 `store.js` 的 `createSessionFromDraft(firstUserContent)` 中实现字符感知截取算法：
+     - 过滤与折叠空白：`const folded = firstUserContent.trim().replace(/\s+/g, ' ');`；将换行符、回车符、制表符及多个连续空格统一收敛为一个半角空格，防止多行文本破坏会话条目单行样式；
+     - Unicode 码点感知切片：`const title = Array.from(folded).slice(0, 10).join('');`；严格按字符感知单元截取，杜绝原生 JavaScript `slice(0, 10)` 在 UTF-16 代理对（如 emoji 表情）中间切断导致的乱码与字符畸变；不足 10 字时保留全部文本。
+  2. 安全 DOM 渲染：新会话节点插入会话列表 DOM 时，必须使用 `element.textContent = title` 赋值，严禁使用 `innerHTML`，彻底杜绝用户输入构造恶意标签导致的 XSS 注入隐患；同时将完整 `folded` 赋给 `title` HTML 属性供长文本悬停查阅。
 
 ##### A6.6 会话重命名
 
-**A6_6_1 悬停快捷入口与行内编辑保存交互**
+**A6_6_1 悬停快捷入口与行内编辑事件保护**
 - 状态：已确认
-- 需求描述：鼠标悬停在会话条目上时显示重命名入口，点击后可编辑标题并保存，列表与当前会话标题同步更新；自动标题先于重命名发生，重命名结果不会被后续消息覆盖。
+- 需求描述：鼠标悬停在会话条目上时显示重命名入口，点击后可编辑标题并保存，列表与当前会话标题同步更新；自动标题先于重命名发生，重命名结果不会被后续消息覆盖；严格拦截事件冒泡、中文选字回车误触、失焦重复提交与列表重绘冲突。
 - 详细方案设计：
   1. 在 `Assistant/web/index.html` 的内联 SVG sprite 中增加 `icon-pencil` 线性编辑图标 symbol。
   2. 在每个会话条目 DOM 中构建操作按钮组 `<div class="session-item__actions">`，内含 `<button class="session-item__action-btn" data-action="rename" title="重命名" aria-label="重命名会话"><svg viewBox="0 0 24 24"><use href="#icon-pencil"></use></svg></button>`。
   3. 悬停交互：在 `chat.css` 中设置 `.session-item__actions` 默认 `opacity: 0`；当 `.session-item:hover` 或 `.session-item:focus-within` 时 `opacity: 1`。
-  4. 点击重命名按钮时（阻止事件冒泡防止触发会话切换），条目进入编辑态：
-     - 为 `.session-item` 增加 `.is-editing` 类；
+  4. 点击重命名按钮时调用 `event.stopPropagation()`，条目进入编辑态：
+     - 为 `.session-item` 增加 `.is-editing` 类；条目内包含标记变量 `let isCommitted = false;` 与组合状态 `let isInputComposing = false;`；
      - 隐藏原有的 `.session-item__title` 与操作组，原地插入单行文本框 `<input class="session-item__input" type="text" maxlength="50">`；
+     - 输入框必须绑定 `click` 事件并调用 `event.stopPropagation()`，防止点击输入框时事件冒泡到外层条目触发会话切换；
      - 输入框初始值为当前标题文本，自动执行 `input.focus()` 与 `input.select()`。
-  5. 提交与取消：
-     - 监听输入框的 `keydown`：若按 `Enter` 触发保存；若按 `Esc` 触发取消并还原原标题；
-     - 监听输入框的 `blur`：触发保存；
-     - 保存逻辑：读取 `input.value.trim()`，若非空且与原标题不同，调用 `store.renameSession(sessionId, newTitle)` 更新内存会话对象并刷新条目显示；若为空串则取消本次修改并恢复原标题；
-     - 退出编辑态，移除 `.is-editing` 并恢复标题与操作组。
-  6. 后续消息免疫：由于会话在发出首条消息时已完成创建，后续继续发送消息仅追加至 `messages` 数组，不再触发生效自动标题逻辑，重命名结果始终保留。
+  5. 事件保护与提交逻辑：
+     - 组合输入法保护：监听输入框 `compositionstart`（置 `isInputComposing = true`）与 `compositionend`（置 `isInputComposing = false`）；
+     - 键盘事件：监听 `keydown`：
+       a. 若按 `Enter`：若 `isInputComposing || event.isComposing` 为真则直接返回，防止输入法确认拼音时误保存；若非组合输入，设置 `isCommitted = true`，调用保存流程并退出编辑；
+       b. 若按 `Esc`：设置 `isCommitted = true`，恢复原标题并退出编辑；
+     - 失焦保护：监听输入框 `blur`：若 `isCommitted` 为 `true`，说明此前已通过 Enter 或 Esc 完成处理，直接 return；若为 `false`，则将其置为 `true` 并执行保存流程；
+     - 保存处理：读取 `input.value.trim().replace(/\s+/g, ' ')`，若非空且与原标题不同，调用 `store.renameSession(sessionId, newTitle)`，并使用 `titleSpan.textContent = newTitle` 安全更新 DOM；若为空串则取消本次修改并恢复原标题；
+     - 退出编辑态，移除 `.is-editing`，销毁输入框并重新显示标题与操作组。
+  6. 列表重排防丢失保护：若在编辑态期间有后台流式完成或数据更新，会话列表控制器禁止对会话列表执行全局 `replaceChildren` 全量重建，保持当前编辑中的 input 节点完整稳定。
 
 ##### A6.7 会话删除
 
-**A6_7_1 悬停删除入口与活动会话回退草稿态**
+**A6_7_1 悬停删除入口、流式中止与状态复位保护**
 - 状态：已确认
-- 需求描述：鼠标悬停在会话条目上时显示删除入口，触发后删除该会话及其全部消息；若删除的是当前正在查看的会话，页面落在一个空白草稿会话上，不自动打开其他会话。
+- 需求描述：鼠标悬停在会话条目上时显示删除入口，触发后删除该会话及其全部消息；若删除正在流式的会话，中止网络连接并复位状态防止死锁；若删除当前正在查看的会话，页面落回空白草稿会话。
 - 详细方案设计：
   1. 在 `Assistant/web/index.html` 的内联 SVG sprite 中增加 `icon-trash` 垃圾桶线性图标 symbol。
   2. 在会话条目的 `.session-item__actions` 内增加删除按钮 `<button class="session-item__action-btn" data-action="delete" title="删除会话" aria-label="删除会话"><svg viewBox="0 0 24 24"><use href="#icon-trash"></use></svg></button>`。
   3. 点击删除按钮时调用 `event.stopPropagation()`，在 `views/chat.js` 中触发会话删除流程：
-     - 调用 `store.deleteSession(sessionId)`：从 `store.sessions` 中过滤掉该会话及其全部消息；
-     - 从会话列表 DOM 容器中移除对应的 `.session-item` 节点；
-     - 若被删除的会话正好是当前活动会话（`sessionId === store.getActiveSessionId()`）：
-       - 调用 `store.enterDraft()` 将 `activeSessionId` 重置为 `null`；
-       - 清空当前草稿文字与输入框（`composerInputEl.value = ''`），重置高度并禁用发送按钮；
-       - 清空 `#messages` 容器并显示 `#chat-empty` 空状态；
-       - 不自动切换或打开会话列表中的其他既有会话；
-     - 若被删除的会话是非当前活动会话，当前正在查看的会话内容、输入框文字与滚动状态保持不变。
+     - 流式中止与死锁保护：检查当前全局状态，若当前 `store.isStreaming` 为 `true` 且正在流式处理的请求属于目标被删除会话：
+       a. 立即调用 `store.currentAbortController.abort()` 中止底层 fetch SSE 数据流；
+       b. 将 `store.isStreaming` 立即置为 `false`，清空 `store.currentAbortController = null`；
+       c. 调用 `syncSendButtonState()` 强制刷新发送按钮可用态，杜绝因连接中途销毁导致的按钮永久禁用死锁；
+     - 队列清理：过滤清理 `store.queue` 中所有 `sessionId === targetId` 的排队项；
+     - 内存与视图移除：调用 `store.deleteSession(sessionId)` 从 `store.sessions` 中移除该会话；从会话列表 DOM 容器中移除对应的 `.session-item` 节点；
+     - 活动会话落回草稿态：若被删除的会话正好是当前活动会话（`sessionId === store.getActiveSessionId()`）：
+       a. 调用 `store.enterDraft()` 将 `activeSessionId` 重置为 `null`；
+       b. 清空输入框（`composerInputEl.value = ''`），重置高度并禁用发送按钮；
+       c. 清空 `#messages` 容器并显示 `#chat-empty` 空状态；
+       d. 不自动切换或打开会话列表中的其他既有会话；
+     - 若队列中仍有属于其他未删除会话的排队请求，在中止清理后继续调用 `processQueue()` 调度下一条。
 
 ##### A6.8 顶部预留区
 
@@ -764,44 +791,46 @@ class Agent(Protocol):
 
 ##### A6.9 草稿输入保留
 
-**A6_9_1 空白草稿未发送文字跨路由保留与恢复**
+**A6_9_1 空白草稿未发送文字输入即存与跨路由保留**
 - 状态：已确认
 - 需求描述：在空白草稿会话的输入框中已输入但尚未发送的文字，在离开对话页（切到个人数据库、管理 Mail、手机端联动、配置任一页面）后返回时仍然保留，返回后可直接继续编辑或发送。
 - 详细方案设计：
-  1. 在空白草稿态（`activeSessionId === null`）下，用户在 `composerInputEl` 中键入文字时，输入事件触发 `store.setDraftText(composerInputEl.value)`，实时将未发送文字暂存在 `store.draftText` 中。
+  1. 采用统一的输入即存机制：在空白草稿态（`activeSessionId === null`）下，用户在 `composerInputEl` 中键入任意文字，`input` 事件触发时立即执行 `store.draftText = composerInputEl.value`，无延迟暂存。
   2. 前端路由采用常驻 DOM 方案：切换到其他非对话路由时，`#view-chat` 仅设置 `hidden = true`，DOM 实例与输入框内容完整保留在浏览器内存中；切回 `#/chat` 时，`#view-chat` 重新可见，输入框文字自然完好如初。
-  3. 路由重置或视图激活钩子中，从 `store.getDraftText()` 读取草稿文字与输入框核对，调用 `adjustInputHeight()` 恢复文本框伸缩高度，并调用 `syncSendButtonState()` 恢复发送按钮的可用状态。
+  3. 路由重置或视图重新激活时，从 `store.draftText` 读取草稿文字核对并回填输入框，调用 `adjustInputHeight()` 恢复文本框伸缩高度，并调用 `syncSendButtonState()` 恢复发送按钮的可用状态。
 
 ##### A6.10 会话输入保留（全部会话）
 
-**A6_10_1 全部会话各自维护未发送草稿与切会话恢复**
+**A6_10_1 全会话未发送输入统一实时存取与自适应恢复**
 - 状态：已确认
 - 需求描述：每个会话各自记住输入框中尚未发送的文字；在会话之间切换、或切换到其他导航页再返回时，返回的会话恢复它自己的未发送文字；已发送的消息不受影响。
 - 详细方案设计：
   1. 在每个正式会话对象中维护 `draft: string` 属性（默认空串 `''`）。
-  2. 会话离开时保存未发送文字：
-     - 当用户点击切换至另一个会话、或点击新建对话、或路由离开对话页时，执行 `saveCurrentDraft()`；
-     - 若当前处于已有会话（`activeSessionId !== null`），将当前输入框内容写入该会话：`session.draft = composerInputEl.value`；
-     - 若当前处于空白草稿态（`activeSessionId === null`），写入 `store.draftText = composerInputEl.value`。
-  3. 会话进入时恢复未发送文字：
-     - 当用户切入目标会话时，执行 `restoreDraft()`；
-     - 若切入的是已有会话，从该会话对象读取 `session.draft`，赋值给 `composerInputEl.value`；
-     - 若切入的是空白草稿态，从 `store.draftText` 读取并赋值给 `composerInputEl.value`；
-     - 恢复后立即调用 `adjustInputHeight()` 自适应文本域高度，调用 `syncSendButtonState()` 联动发送按钮状态；
-  4. 当某会话成功发送一条消息后，仅将该会话自身的 `draft` 清空为 `''`，其他会话已保存的未发送文字互不影响。
+  2. 统一实时写入机制：`composerInputEl` 的 `input` 监听器统一步调：
+     - 若 `activeSessionId !== null`，实时写入 `activeSession.draft = composerInputEl.value`；
+     - 若 `activeSessionId === null`，实时写入 `store.draftText = composerInputEl.value`；
+     - 彻底免除组件销毁或切换路由时的手动离场保存逻辑，杜绝漏存风险。
+  3. 会话切入即时恢复：当用户在会话列表点击切换至目标会话时：
+     - 读取目标会话的 `session.draft`，赋值给 `composerInputEl.value`；
+     - 恢复后立即调用 `adjustInputHeight()` 重新计算高度（1 行至 200px 自动展开），并调用 `syncSendButtonState()` 同步发送按钮可用状态；
+  4. 消息发送清空机制：当某会话成功发出一条消息后，立即将其 `session.draft` 清空为 `''`；其他会话已保存的未发送文字互不影响。
 
 ##### A6.11 新建对话丢弃旧草稿
 
-**A6_11_1 显式新建对话清空丢弃未发送草稿**
+**A6_11_1 显式新建对话丢弃条件分支与草稿恢复约定**
 - 状态：已确认
-- 需求描述：当空白草稿会话中已有未发送文字时点击"新建对话"，旧草稿及其文字直接丢弃，不做保留，也不提供返回旧草稿的入口；浏览页面、切换会话等非"新建对话"的操作仍按 A6.9 与 A6.10 保留文字；已经发出过消息的会话不属于草稿，不受本条目影响。
+- 需求描述：从既有会话点击"新建对话"进入草稿态时，恢复此前暂存的草稿文字（若有）；只有当前本来就处于空白草稿态时再次点击"新建对话"，旧草稿及其文字才直接丢弃，不做保留，也不提供返回旧草稿的入口；浏览页面、切换会话等非"新建对话"的操作仍按 A6.9 与 A6.10 保留文字；已经发出过消息的会话不属于草稿，不受本条目影响。
 - 详细方案设计：
-  1. 在"新建对话"按钮的点击事件处理函数 `handleNewChat()` 中进行条件分支处理：
-     - 若当前本身处于空白草稿态（`activeSessionId === null`）：
-       - 显式执行 `store.clearDraftText()`，将内存中的 `store.draftText` 重置为空串 `''`；
+  1. 在"新建对话"按钮的点击事件处理函数 `handleNewChat()` 中根据当前活动态执行严格分支判断：
+     - 分支一（当前本已处于草稿态 `activeSessionId === null`）：
+       - 用户在草稿态再次显式点击新建对话，表明放弃当前未发送草稿；
+       - 执行 `store.clearDraftText()`，将 `store.draftText` 重置为空串 `''`；
        - 将 `composerInputEl.value = ''`，输入框高度重置为单行（`resetInputHeight()`），发送按钮置灰禁用；
-       - 不创建任何隐藏或撤销条目，旧草稿文字彻底丢弃；
-     - 若当前正处于某一既有正式会话（`activeSessionId !== null`）：
-       - 首先按 A6.10 将输入框文字保存至该会话的 `draft` 属性中（安全保留既有会话输入）；
-       - 随后调用 `store.enterDraft()` 进入全新的空白草稿态，并将 `store.draftText` 设为空串 `''`，清空输入框并重置界面；
-  2. 既有会话已进入列表，不属于草稿范畴；非新建操作（在已创建会话间点击切换、点击其他导航入口浏览页面）均不走丢弃逻辑，严格执行 A6.9 与 A6.10 的草稿恢复机制。
+       - 旧草稿文字彻底销毁丢弃，不提供任何恢复入口；
+     - 分支二（当前正处于某一既有正式会话 `activeSessionId !== null`）：
+       - 用户从既有会话切换回草稿态准备开启新对话；
+       - 当前会话的输入文字早已通过 `input` 实时安全保存在 `session.draft` 中（满足 A6.10）；
+       - 调用 `store.enterDraft()`，将 `activeSessionId` 切换为 `null`；
+       - 此时将此前在草稿态留存的 `store.draftText`（若有）回填至 `composerInputEl.value`；
+       - 联动调用 `adjustInputHeight()` 与 `syncSendButtonState()` 恢复草稿文字与按钮状态，严禁将既有草稿置空清零；
+  2. 会话列表中的既有会话不受影响；通过常规浏览页面、切换已有会话等操作离开或返回草稿态时，均严格执行 A6.9 与 A6.10 的文字完整保留逻辑。
