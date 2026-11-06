@@ -1,7 +1,7 @@
 // 对话主窗口与会话列表视图：多会话管理、草稿保留与丢弃、DOM 渲染与流式响应驱动
 
 import { streamChat } from '../api.js';
-import { el, formatTimestamp, isNearBottom, scrollToBottom } from '../dom.js';
+import { createSvgIcon, el, formatTimestamp, isNearBottom, scrollToBottom } from '../dom.js';
 import {
   abortStreaming,
   addAgentPlaceholder,
@@ -231,11 +231,7 @@ function renderSessionList() {
           'aria-label': '重命名会话',
         },
       },
-      [
-        el('svg', { attrs: { viewBox: '0 0 24 24' } }, [
-          el('use', { attrs: { href: '#icon-pencil' } }),
-        ]),
-      ],
+      [createSvgIcon('icon-pencil')],
     );
 
     // 删除按钮
@@ -250,11 +246,7 @@ function renderSessionList() {
           'aria-label': '删除会话',
         },
       },
-      [
-        el('svg', { attrs: { viewBox: '0 0 24 24' } }, [
-          el('use', { attrs: { href: '#icon-trash' } }),
-        ]),
-      ],
+      [createSvgIcon('icon-trash')],
     );
 
     actionsDiv.appendChild(renameBtn);
