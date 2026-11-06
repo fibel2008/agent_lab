@@ -375,7 +375,7 @@ class Agent(Protocol):
 ##### A2.1 消息输入
 
 **A2_1_1 对话页输入区 DOM 与自适应高度文本域**
-- 状态：已确认
+- 状态：已完成
 - 需求描述：在对话页底部提供固定输入区，支持多行自动增高与最大高度内部滚动。
 - 详细方案设计：
   1. 在 `Assistant/web/index.html` 的 `#view-chat` 底部增加 `.chat__composer`，内含排队提示 `<p class="composer__queue" id="composer-queue" hidden></p>`、表单 `<form class="composer" id="composer">`（包含 `<textarea class="composer__input" id="composer-input" rows="1" maxlength="4000">` 与 `<button class="composer__send" id="send-button" type="submit" disabled>`）以及快捷键提示 `.composer__hint`。
@@ -383,7 +383,7 @@ class Agent(Protocol):
   3. 在 `Assistant/web/js/views/chat.js` 监听 `input` 事件，每次输入将 `textarea.style.height` 先设为 `'auto'`，再设为 `${Math.min(textarea.scrollHeight, 200)}px`，实现 1 行至 `200px` 自动伸缩。
 
 **A2_1_2 键盘快捷键与中文输入法组合保护**
-- 状态：已确认
+- 状态：已完成
 - 需求描述：实现 Enter 发送、Shift + Enter 换行，并拦截中文输入法候选词组合期间的 Enter 键。
 - 详细方案设计：
   1. 在 `views/chat.js` 中维护布尔状态 `isComposing = false`，监听 `#composer-input` 的 `compositionstart`（设为 `true`）与 `compositionend`（设为 `false`）。
@@ -392,7 +392,7 @@ class Agent(Protocol):
 ##### A2.2 空白消息拦截
 
 **A2_2_1 发送按钮可用态联动与提交双重校验**
-- 状态：已确认
+- 状态：已完成
 - 需求描述：当输入框为空或仅含空白字符时禁用发送按钮，输入有效字符后立即启用。
 - 详细方案设计：
   1. 在 `views/chat.js` 实现 `syncSendButtonState()`：读取 `composerInput.value.trim().length === 0`，据此设置 `sendButton.disabled`。
@@ -402,7 +402,7 @@ class Agent(Protocol):
 ##### A2.3 用户消息上屏
 
 **A2_3_1 立即追加用户消息并重置输入框**
-- 状态：已确认
+- 状态：已完成
 - 需求描述：点击发送或按 Enter 后，用户消息立即追加至消息列表末尾，同时清空输入框并保持输入焦点。
 - 详细方案设计：
   1. 在 `Assistant/web/js/store.js` 实现 `addUserMessage(content)`：构造 `{ id, role: 'user', content, createdAt: new Date(), status: 'done' }` 推入 `store.messages` 并返回该对象。
@@ -411,7 +411,7 @@ class Agent(Protocol):
 ##### A2.4 双方消息分列
 
 **A2_4_1 左右分列布局与差异化气泡样式**
-- 状态：已确认
+- 状态：已完成
 - 需求描述：用户消息靠右显示为主色淡底气泡，Agent 消息靠左显示为深色卡片气泡。
 - 详细方案设计：
   1. 在 `views/chat.js` 渲染单条消息为 `<article class="msg msg--user|msg--agent" data-message-id="...">`，内部包含 `<div class="msg__bubble"><p class="msg__text"></p></div>` 与 `<time class="msg__time">`。
@@ -423,7 +423,7 @@ class Agent(Protocol):
 ##### A2.5 消息顺序与滚动
 
 **A2_5_1 顺序追加与智能触底滚动控制**
-- 状态：已确认
+- 状态：已完成
 - 需求描述：消息严格按创建顺序追加；新消息上屏必滚到底部；流式输出期间若用户手动上滑查看历史则暂停自动跟随。
 - 详细方案设计：
   1. 在 `views/chat.js` 维护布尔变量 `shouldAutoScroll = true`，监听滚动容器 `#chat-scroll` 的 `scroll` 事件，通过 `dom.js` 的 `isNearBottom(chatScrollEl, 80)` 实时更新 `shouldAutoScroll`。
@@ -433,7 +433,7 @@ class Agent(Protocol):
 ##### A2.6 时间戳
 
 **A2_6_1 本地时区格式化与气泡下方展示**
-- 状态：已确认
+- 状态：已完成
 - 需求描述：每条消息气泡下方展示 `YYYY-MM-DD HH:mm` 本地时间戳，不做相对时间与日期分隔线。
 - 详细方案设计：
   1. 使用 `Assistant/web/js/dom.js` 已实现的 `formatTimestamp(dateInput)` 生成本地时间字符串 `YYYY-MM-DD HH:mm`，同时将 `<time class="msg__time">` 的 `datetime` 属性设为 `date.toISOString()`。
@@ -443,7 +443,7 @@ class Agent(Protocol):
 ##### A2.7 头像
 
 **A2_7_1 无头像纯气泡卡片结构**
-- 状态：已确认
+- 状态：已完成
 - 需求描述：对话列表中不渲染用户或 Agent 头像，依靠对齐方向与卡片边框底色区分角色。
 - 详细方案设计：
   1. `.msg` DOM 结构仅包含 `.msg__bubble` 与 `.msg__time` 两个直接子元素，不预留头像槽位或左侧缩进。
@@ -452,7 +452,7 @@ class Agent(Protocol):
 ##### A2.8 会话模型
 
 **A2_8_1 单一内存会话流与常驻视图**
-- 状态：已确认
+- 状态：已完成
 - 需求描述：全应用仅维护单一对话流，不提供多会话列表，消息保存在浏览器内存中，刷新页面即清空。
 - 详细方案设计：
   1. 在 `Assistant/web/js/store.js` 中定义单例状态（`messages: []`、`queue: []`、`isStreaming: false`），不读写 `localStorage`、`sessionStorage` 或 `IndexedDB`。
@@ -461,7 +461,7 @@ class Agent(Protocol):
 ##### A2.9 回复期间可继续输入
 
 **A2_9_1 历史快照发送队列与串行流式调度**
-- 状态：已确认
+- 状态：已完成
 - 需求描述：Agent 流式回复期间不锁定输入框，新发送的用户消息立即上屏并进入先进先出队列依次请求回复。
 - 详细方案设计：
   1. 用户每次发送消息时，立即将用户消息追加到 `store.messages` 并渲染上屏，同时截取截至该条用户消息的对话历史快照（仅含已完成的 `user` / `assistant` 消息，最多保留最近 30 条），推入 `store.queue`。
@@ -520,14 +520,14 @@ class Agent(Protocol):
   2. 首块直接 `yield`，后续每块前执行 `await asyncio.sleep(STREAM_DELAY_MS / 1000.0)`，确保首字节在 50ms 内发出、整条回复在 1~4 秒内平滑输出完毕。
 
 **A4_1_2 前端 Fetch ReadableStream SSE 解析器**
-- 状态：已确认
+- 状态：已完成
 - 需求描述：前端使用 `fetch` + `ReadableStream` + `TextDecoder` 实时解析 `POST /api/chat` 返回的 SSE 事件流。
 - 详细方案设计：
   1. 在 `Assistant/web/js/api.js` 实现 `streamChat({ messages, signal, onMeta, onDelta, onDone, onError })`。
   2. 若响应 `!response.ok`，读取错误体并触发 `onError`；若为 `200`，通过 `response.body.getReader()` 循环读取字节流，使用 `TextDecoder('utf-8')` 解码并按 `\r?\n\r?\n` 切分完整事件块，提取 `event:` 与 `data:` 行后回调对应处理函数。
 
 **A4_1_3 等待三点动画、闪烁光标与帧合并渲染**
-- 状态：已确认
+- 状态：已完成
 - 需求描述：流式请求发起后先显示三点等待动画，收到增量文本后逐字追加并显示闪烁光标，完成或报错时优雅收尾。
 - 详细方案设计：
   1. 请求发起时插入 `.msg--agent.is-streaming` 节点，气泡内含 `.msg__waiting`（三个 6px 圆点透明度循环动画）与 `.msg__text`。
