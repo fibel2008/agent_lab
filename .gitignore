@@ -15,6 +15,9 @@ dist/
 .env.*
 !.env.example
 
+# 临时规格文件
+spec_temp.md
+
 # 编辑器与系统
 .vscode/
 .idea/
