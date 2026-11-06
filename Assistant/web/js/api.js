@@ -62,6 +62,84 @@ export async function fetchOnlineMessages(sessionId) {
   return await response.json();
 }
 
+export async function sendOnlineMessage(sessionId, content) {
+  const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ content }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    const error = new Error(err.detail || `发送消息失败: HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return await response.json();
+}
+
+export async function abortOnlineChat(sessionId) {
+  const response = await fetch('/api/chat/abort', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+  if (!response.ok) {
+    return false;
+  }
+  const data = await response.json().catch(() => ({}));
+  return data.status === 'aborted';
+}
+
+export async function subscribeChatStream(sessionId, {
+  signal,
+  onMeta,
+  onDelta,
+  onDone,
+  onError,
+}) {
+  let response;
+  try {
+    response = await fetch(`/api/chat/stream?session_id=${encodeURIComponent(sessionId)}`, {
+      method: 'GET',
+      signal,
+    });
+  } catch (networkError) {
+    if (signal?.aborted) {
+      return;
+    }
+    onError?.({
+      code: 'NETWORK_ERROR',
+      message: networkError.message || '网络连接异常，无法访问模型服务商，请检查网络连接或代理设置。',
+    });
+    return;
+  }
+
+  if (!response.ok) {
+    let errorDetail = `HTTP ${response.status}`;
+    try {
+      const errJson = await response.json();
+      if (errJson?.detail) {
+        errorDetail = typeof errJson.detail === 'string'
+          ? errJson.detail
+          : JSON.stringify(errJson.detail);
+      }
+    } catch {
+      // 保留状态码
+    }
+    onError?.({
+      code: `http_${response.status}`,
+      message: `请求失败（${errorDetail}）`,
+    });
+    return;
+  }
+
+  await readSSEStream(response, signal, { onMeta, onDelta, onDone, onError });
+}
+
 export async function streamChat({
   messages,
   signal,
@@ -110,6 +188,10 @@ export async function streamChat({
     return;
   }
 
+  await readSSEStream(response, signal, { onMeta, onDelta, onDone, onError });
+}
+
+async function readSSEStream(response, signal, { onMeta, onDelta, onDone, onError }) {
   const reader = response.body?.getReader();
   if (!reader) {
     onError?.({

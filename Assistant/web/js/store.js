@@ -385,3 +385,22 @@ export function abortStreaming() {
   }
   state.isStreaming = false;
 }
+
+
+export function setSessionSubscription(sessionId, controller) {
+  if (state.streamingBySession[sessionId]?.abortController) {
+    state.streamingBySession[sessionId].abortController.abort();
+  }
+  state.streamingBySession[sessionId] = { abortController: controller };
+}
+
+export function clearSessionSubscription(sessionId) {
+  if (state.streamingBySession[sessionId]?.abortController) {
+    state.streamingBySession[sessionId].abortController.abort();
+  }
+  delete state.streamingBySession[sessionId];
+}
+
+export function getSessionSubscription(sessionId) {
+  return state.streamingBySession[sessionId] || null;
+}
