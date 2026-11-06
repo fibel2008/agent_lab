@@ -27,6 +27,8 @@
 2026-11-06：完成 Spec.md 第二轮并发、安全与一致性核验修订：统一 `dispatch_action(self, tool_call: ToolCall)` 签名；将 `feature/session-list` 标记为已完成，并按纵向依赖重排分支 5/6/7；补齐 `NETWORK_ERROR` 错误码与 4xx/5xx 映射，并在 `GET /api/sessions/{id}/messages` 中由后端统一返回 `error_message`；采用 FastAPI lifespan 单一共享 `aiosqlite.Connection` + `asyncio.Lock` 写锁 + `busy_timeout=5000` 方案；规定 409 同步占位、终态先落盘再广播、删除会话先 `cancel_and_wait`、优雅停服及 `Origin`/`Host` 环回校验。
 2026-11-06：完成第二版 `feature/storage-crud` 分支开发与端到端验证：实现 SQLite 异步仓储层（aiosqlite 单连接 + 写锁 + busy_timeout=5000 + WAL 模式 + CASCADE 外键约束）、会话与消息 CRUD、会话自增序号 seq 与 error_code 统一映射、跨站写请求 Origin/Host 环回白名单中间件；实现顶栏形态切换胶囊交互组件与微呼吸动效（.mode-toggle）、GET /api/config/status 密钥探测与阻断横幅提示、双形态状态管理与数据源严格隔离、跨形态草稿安全保留与在线会话持久化存储加载；通过全量端到端 HTTP 接口冒烟与 Headless Edge CDP 浏览器自动化全链路测试。
 
+2026-11-06：完成第二版 `feature/online-react-agent` 分支开发：实现 OpenAI 兼容异步流式 HTTP 客户端（LLMClient，严格支持 401/403/429/500/超时/网络异常分类与脱敏保护）、ReAct 循环引擎（无工具阶段直接流式最终回答防推理泄露、5 步上限与动作分发阻断）、工具抽象协议与单例 ToolRegistry（is_empty 预留）、单会话上下文滑动窗口构建算法（按 seq 升序、过滤空与 error、补偿 interrupted 说明、严格交叉序列维持、末尾 30 条截取与首条 user 校验、跨会话绝对隔离）、错误卡片实时追加 (.msg__error-tip) 与历史回显样式；通过 15 项异步单元测试全覆盖。
+
 ## 2. 已做决定及理由
 
 2.1 2026-11-06 分支由 `master` 重命名为 `main`。理由：与 Intent 约定一致；仓库为本地单机仓库，无远端，重命名无风险。
@@ -67,6 +69,9 @@
 2.36 2026-11-06 在线会话与离线会话数据源在 store.js 中分别维护在 onlineSessions 与 offlineSessions，切换形态时统一落入空白草稿态（activeSessionId = null）且输入框草稿文字不丢失。理由：严格遵循 Spec B1_1_3 与 B1.7 规定，杜绝双形态会话数据串流混杂，同时保证用户在形态间切换时不丢失打下的半截文字。
 2.37 2026-11-06 密钥缺失拦截采用非侵入顶部横幅（.chat-banner），文案严格绑定 System Error Code Registry（NO_API_KEY）。理由：满足 B1_1_2 与 3.6 单一事实来源规范，阻断进入在线模式的同时避免弹窗打扰用户输入。
 
+2.38 2026-11-06 第二版无工具阶段 ReAct 引擎直接输出最终回答，Prompt 严禁注入 Thought/Final Answer 前缀。理由：严格遵循 Intent B1.4 与 Spec B1_4_2，杜绝流式推理过程提前推向前端上屏造成泄露，同时保留 ReActLoop 骨架与动作分发点以平滑演进后续工具版本。
+2.39 2026-11-06 消息上下文构建严格维持 user-assistant 交叉序列并截取末尾滑动窗口。理由：过滤掉 error 等异常卡片后，可能残留连续两条 user 提问，丢弃前一条无应答消息可保证模型遵循标准多轮对话结构且上下文不超过预算。
+
 ## 3. 踩过的坑
 
 3.1 2026-11-06 空目录 `Assistant/` 未被 Git 跟踪。后续放入首个文件或 `.gitkeep` 后方可入库。
@@ -81,6 +86,6 @@
 
 ## 4. 下一步
 
-4.1 `feature/storage-crud` 经 Fibel 验收通过后，合并回 `main` 并推送到 `origin`。
-4.2 按 Spec.md 功能分支拆分切出 `feature/online-react-agent`（顺序 6）分支推进开发：实现本机模型配置读取、OpenAI 兼容流式客户端（LLMClient）、ReAct 循环引擎、工具注册中心预留、多轮上下文构建与中文错误提示（覆盖 B1.2 ~ B1.6）。
+4.1 `feature/online-react-agent` 经验收后合并回 `main` 并推送到 `origin`。
+4.2 按 Spec.md 功能分支拆分切出 `feature/generation-decoupling`（顺序 7）分支推进开发：实现后台异步任务管理器 TaskManager、POST /api/sessions/{id}/messages 触发、会话级 SSE 订阅 GET /api/chat/stream、切页/刷新无缝重连、生成中切换形态安全中断与优雅停服补偿恢复。
 4.3 保持提交后推送当前分支、合并后推送 `main` 的 Git 同步约定。
