@@ -2,11 +2,14 @@
 
 from fastapi import APIRouter, HTTPException, status
 
+from ..agent.task_manager import task_manager
 from ..storage.session_store import session_store
 from .schemas import (
     CreateSessionRequest,
     MessageResponse,
     RenameSessionRequest,
+    SendMessageRequest,
+    SendOnlineMessageResponse,
     SessionResponse,
 )
 
@@ -53,6 +56,8 @@ async def rename_session(session_id: str, request: RenameSessionRequest) -> dict
 )
 async def delete_session(session_id: str) -> None:
     """删除指定会话及关联的所有消息与任务。"""
+    # 先等待该会话可能正在运行的任务彻底中断并落盘
+    await task_manager.abort_session(session_id)
     await session_store.delete_session(session_id)
     return None
 
@@ -70,3 +75,45 @@ async def get_session_messages(session_id: str) -> list[dict]:
             detail=f"会话 {session_id} 不存在",
         )
     return await session_store.get_messages(session_id)
+
+
+@router.post(
+    "/api/sessions/{session_id}/messages",
+    response_model=SendOnlineMessageResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def send_session_message(
+    session_id: str,
+    request: SendMessageRequest,
+) -> dict:
+    """在指定在线会话中发送新消息，异步触发后台持续生成。"""
+    session = await session_store.get_session(session_id)
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"会话 {session_id} 不存在",
+        )
+
+    # 409 同步槽位防穿透
+    if task_manager.is_session_busy(session_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="该会话已有正在进行的生成任务",
+        )
+
+    try:
+        task = await task_manager.start_generation(
+            session_id=session_id,
+            user_content=request.content,
+            store=session_store,
+        )
+        return {
+            "task_id": task.task_id,
+            "message_id": task.message_id,
+            "status": "running",
+        }
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        )

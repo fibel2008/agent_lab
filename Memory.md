@@ -29,6 +29,8 @@
 
 2026-11-06：完成第二版 `feature/online-react-agent` 分支开发：实现 OpenAI 兼容异步流式 HTTP 客户端（LLMClient，严格支持 401/403/429/500/超时/网络异常分类与脱敏保护）、ReAct 循环引擎（无工具阶段直接流式最终回答防推理泄露、5 步上限与动作分发阻断）、工具抽象协议与单例 ToolRegistry（is_empty 预留）、单会话上下文滑动窗口构建算法（按 seq 升序、过滤空与 error、补偿 interrupted 说明、严格交叉序列维持、末尾 30 条截取与首条 user 校验、跨会话绝对隔离）、错误卡片实时追加 (.msg__error-tip) 与历史回显样式；通过 15 项异步单元测试全覆盖。
 
+2026-11-06：完成第二版 `feature/generation-decoupling` 分支开发：实现全局后台任务管理器 TaskManager、POST /api/sessions/{id}/messages 触发异步生成、会话级 SSE 订阅 GET /api/chat/stream、追赶式增量广播、POST /api/chat/abort 主动中断与安全落盘、409 防并发穿透、单会话严格串行与跨会话并发独立、切页切会话无缝重连、模式切换生成中断（B1_1_3）与应用级优雅停服（lifespan TaskManager 取消收尾与落盘）。通过 21 项全量单元测试与 Headless Edge CDP 浏览器自动化端到端测试。第二版 B1.0 全部 9 个核心能力与 Spec 拆解项全部完成并闭环。
+
 ## 2. 已做决定及理由
 
 2.1 2026-11-06 分支由 `master` 重命名为 `main`。理由：与 Intent 约定一致；仓库为本地单机仓库，无远端，重命名无风险。
@@ -72,6 +74,9 @@
 2.38 2026-11-06 第二版无工具阶段 ReAct 引擎直接输出最终回答，Prompt 严禁注入 Thought/Final Answer 前缀。理由：严格遵循 Intent B1.4 与 Spec B1_4_2，杜绝流式推理过程提前推向前端上屏造成泄露，同时保留 ReActLoop 骨架与动作分发点以平滑演进后续工具版本。
 2.39 2026-11-06 消息上下文构建严格维持 user-assistant 交叉序列并截取末尾滑动窗口。理由：过滤掉 error 等异常卡片后，可能残留连续两条 user 提问，丢弃前一条无应答消息可保证模型遵循标准多轮对话结构且上下文不超过预算。
 
+2.40 2026-11-06 在线对话回复生成与客户端连接彻底解耦。理由：用户切页、切会话或网络瞬断时，前端仅断开该客户端专属 SSE 连接，后台协程绝不取消、继续全速生成并节流写盘，再次进入时通过 GET /api/chat/stream 追赶补齐，确保长生成稳定不丢失。
+2.41 2026-11-06 单会话生成采用 409 同步槽位占位与严格串行。理由：杜绝短时间内重复点击或网络重发导致同一会话产生多个并发生成任务与时序错乱，而不同会话之间相互独立并发，互不阻塞。
+
 ## 3. 踩过的坑
 
 3.1 2026-11-06 空目录 `Assistant/` 未被 Git 跟踪。后续放入首个文件或 `.gitkeep` 后方可入库。
@@ -86,6 +91,7 @@
 
 ## 4. 下一步
 
-4.1 `feature/online-react-agent` 经验收后合并回 `main` 并推送到 `origin`。
-4.2 按 Spec.md 功能分支拆分切出 `feature/generation-decoupling`（顺序 7）分支推进开发：实现后台异步任务管理器 TaskManager、POST /api/sessions/{id}/messages 触发、会话级 SSE 订阅 GET /api/chat/stream、切页/刷新无缝重连、生成中切换形态安全中断与优雅停服补偿恢复。
-4.3 保持提交后推送当前分支、合并后推送 `main` 的 Git 同步约定。
+4.1 `feature/generation-decoupling` 经 Fibel 验收通过后，合并回 `main` 并推送到 `origin`。
+4.2 第二版（B1.0 在线对话）全部功能分支（5/6/7）已全部圆满交付并具备完整测试覆盖。
+4.3 从合并后的 `main` 切出 `feature/first-release` 分支进行全量回归与收尾发布。
+4.4 保持提交后推送当前分支、合并后推送 `main` 的 Git 同步约定。

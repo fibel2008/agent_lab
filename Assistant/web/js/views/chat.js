@@ -1,13 +1,16 @@
 // 对话主窗口与会话列表视图：多会话管理、双形态切换、草稿保留与丢弃、DOM 渲染与流式响应驱动
 
 import {
+  abortOnlineChat,
   checkConfigStatus,
   createOnlineSession,
   deleteOnlineSession,
   fetchOnlineMessages,
   fetchOnlineSessions,
   renameOnlineSession,
+  sendOnlineMessage,
   streamChat,
+  subscribeChatStream,
 } from '../api.js';
 import { createSvgIcon, el, formatTimestamp, isNearBottom, scrollToBottom } from '../dom.js';
 import {
@@ -17,6 +20,9 @@ import {
   addUserMessage,
   clearDraftText,
   clearQueueForSession,
+  clearSessionSubscription,
+  getSessionSubscription,
+  setSessionSubscription,
   createSessionFromDraft,
   deleteSession,
   dequeueRequest,
@@ -287,8 +293,19 @@ async function handleModeToggle() {
       composerInputEl.focus();
     }
   } else {
-    // 从在线切回离线形态
+    // 从在线切回离线形态 (B1_1_3 安全中断进行中的生成)
     hideBanner();
+    const onlineList = getActiveSessionList();
+    for (const s of onlineList) {
+      if (s.messages && s.messages.length > 0) {
+        const last = s.messages[s.messages.length - 1];
+        if (last.status === 'streaming') {
+          abortOnlineChat(s.id).catch(() => {});
+          clearSessionSubscription(s.id);
+          last.status = 'interrupted';
+        }
+      }
+    }
     setMode('offline');
     if (modeToggleEl) {
       modeToggleEl.classList.remove('is-online');
@@ -652,8 +669,14 @@ function handleNewChat() {
 
 // 切换会话
 async function handleSwitchSession(sessionId) {
-  if (sessionId === getActiveSessionId()) {
+  const prevId = getActiveSessionId();
+  if (sessionId === prevId) {
     return;
+  }
+
+  // 切走上一会话：若存在前端流式订阅，仅断开当前前端专属连接，后台生成不受影响
+  if (prevId) {
+    clearSessionSubscription(prevId);
   }
 
   switchSession(sessionId);
@@ -676,6 +699,17 @@ async function handleSwitchSession(sessionId) {
   }
 
   renderActiveSession();
+
+  // 若切入的会话最新一条消息处于 streaming 状态，自动发起追赶订阅
+  if (getMode() === 'online') {
+    const active = getActiveSession();
+    if (active && active.messages.length > 0) {
+      const last = active.messages[active.messages.length - 1];
+      if (last.role === 'assistant' && last.status === 'streaming') {
+        subscribeOnlineSession(sessionId, last.id);
+      }
+    }
+  }
 
   if (composerInputEl) {
     composerInputEl.value = getSessionDraft(sessionId);
@@ -842,7 +876,12 @@ async function handleSubmit() {
 
   renderSessionList();
 
-  // 5. 截取历史快照并入队
+  // 5. 在线形态直接触发后台解耦任务管理器，离线形态走发送队列
+  if (getMode() === 'online') {
+    handleOnlineSubmit(activeSession.id, agentMessage, text);
+    return;
+  }
+
   const snapshot = getHistorySnapshot(30, activeSession.id);
   enqueueRequest({
     sessionId: activeSession.id,
@@ -853,6 +892,166 @@ async function handleSubmit() {
 
   // 6. 触发队列消费者
   processQueue();
+}
+
+async function handleOnlineSubmit(sessionId, agentMessage, text) {
+  try {
+    const res = await sendOnlineMessage(sessionId, text);
+    if (res?.message_id && res.message_id !== agentMessage.id) {
+      const prevId = agentMessage.id;
+      updateMessage(prevId, { id: res.message_id }, sessionId);
+      if (getActiveSessionId() === sessionId && messagesEl) {
+        const cardNode = messagesEl.querySelector(
+          `[data-message-id="${prevId}"], [data-message-id="${res.message_id}"]`,
+        );
+        if (cardNode) {
+          cardNode.dataset.messageId = res.message_id;
+        }
+      }
+      agentMessage.id = res.message_id;
+    }
+    subscribeOnlineSession(sessionId, agentMessage.id);
+  } catch (err) {
+    const errMsg = err.message || '发送消息失败';
+    updateMessage(agentMessage.id, { status: 'error', errorMessage: errMsg }, sessionId);
+    if (getActiveSessionId() === sessionId && messagesEl) {
+      const cardNode = messagesEl.querySelector(`[data-message-id="${agentMessage.id}"]`);
+      if (cardNode) {
+        cardNode.classList.remove('is-streaming');
+        cardNode.classList.add('is-error');
+        const waitingEl = cardNode.querySelector('.msg__waiting');
+        if (waitingEl) waitingEl.remove();
+        const textEl = cardNode.querySelector('.msg__text');
+        if (textEl) textEl.textContent = errMsg;
+      }
+    }
+  }
+}
+
+function subscribeOnlineSession(sessionId, messageId) {
+  const controller = new AbortController();
+  setSessionSubscription(sessionId, controller);
+
+  subscribeChatStream(sessionId, {
+    signal: controller.signal,
+    onMeta({ message_id, created_at }) {
+      if (getActiveSessionId() === sessionId && messagesEl) {
+        const cardNode = messagesEl.querySelector(
+          `[data-message-id="${message_id}"], [data-message-id="${messageId}"]`,
+        );
+        if (cardNode) {
+          if (message_id) {
+            cardNode.dataset.messageId = message_id;
+          }
+          if (created_at) {
+            const timeEl = cardNode.querySelector('.msg__time');
+            if (timeEl) {
+              const createdDate = new Date(created_at);
+              timeEl.dateTime = created_at;
+              timeEl.textContent = formatTimestamp(createdDate);
+            }
+          }
+        }
+      }
+      const patch = {};
+      if (created_at) patch.createdAt = new Date(created_at);
+      if (message_id) patch.id = message_id;
+      updateMessage(messageId, patch, sessionId);
+    },
+    onDelta({ text }) {
+      if (!text) return;
+      const msg = findMessageInSession(sessionId, messageId);
+      if (msg) {
+        msg.content = (msg.content || '') + text;
+      }
+
+      if (getActiveSessionId() === sessionId && messagesEl) {
+        const cardNode = messagesEl.querySelector(
+          `[data-message-id="${messageId}"], [data-message-id="${msg?.id}"]`,
+        );
+        if (cardNode) {
+          const waitingEl = cardNode.querySelector('.msg__waiting');
+          if (waitingEl) waitingEl.remove();
+          const textEl = cardNode.querySelector('.msg__text');
+          if (textEl) {
+            textEl.textContent = msg ? msg.content : text;
+          }
+          if (shouldAutoScroll && chatScrollEl) {
+            scrollToBottom(chatScrollEl);
+          }
+        }
+      }
+    },
+    onDone(data) {
+      clearSessionSubscription(sessionId);
+      const isInterrupted = data?.finish_reason === 'interrupted';
+      const status = isInterrupted ? 'interrupted' : 'done';
+      updateMessage(messageId, { status }, sessionId);
+
+      if (getActiveSessionId() === sessionId && messagesEl) {
+        const cardNode = messagesEl.querySelector(
+          `[data-message-id="${messageId}"]`,
+        );
+        if (cardNode) {
+          cardNode.classList.remove('is-streaming');
+          const waitingEl = cardNode.querySelector('.msg__waiting');
+          if (waitingEl) waitingEl.remove();
+          if (isInterrupted) {
+            cardNode.classList.add('is-interrupted');
+            const bubble = cardNode.querySelector('.msg__bubble');
+            if (bubble && !bubble.querySelector('.badge--interrupted')) {
+              const badge = el('span', { className: 'badge badge--interrupted', text: '已中断' });
+              bubble.appendChild(badge);
+            }
+          }
+          if (shouldAutoScroll && chatScrollEl) {
+            scrollToBottom(chatScrollEl);
+          }
+        }
+      }
+    },
+    onError(error) {
+      if (error?.name === 'AbortError') {
+        return;
+      }
+      clearSessionSubscription(sessionId);
+      const errMsg = error?.message || '生成过程发生异常，请重试。';
+      updateMessage(messageId, { status: 'error', errorMessage: errMsg }, sessionId);
+
+      if (getActiveSessionId() === sessionId && messagesEl) {
+        const cardNode = messagesEl.querySelector(
+          `[data-message-id="${messageId}"]`,
+        );
+        if (cardNode) {
+          cardNode.classList.remove('is-streaming');
+          cardNode.classList.add('is-error');
+          const waitingEl = cardNode.querySelector('.msg__waiting');
+          if (waitingEl) waitingEl.remove();
+
+          const bubble = cardNode.querySelector('.msg__bubble');
+          const textEl = cardNode.querySelector('.msg__text');
+          const msg = findMessageInSession(sessionId, messageId);
+
+          if (msg && msg.content) {
+            if (textEl) textEl.textContent = msg.content;
+            if (bubble) {
+              let tipEl = bubble.querySelector('.msg__error-tip');
+              if (!tipEl) {
+                tipEl = el('div', { className: 'msg__error-tip' });
+                bubble.appendChild(tipEl);
+              }
+              tipEl.textContent = errMsg;
+            }
+          } else {
+            if (textEl) textEl.textContent = errMsg;
+          }
+          if (shouldAutoScroll && chatScrollEl) {
+            scrollToBottom(chatScrollEl);
+          }
+        }
+      }
+    },
+  });
 }
 
 async function processQueue() {

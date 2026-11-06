@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .agent.task_manager import task_manager
 from .api.chat import router as chat_router
 from .api.config_status import router as config_status_router
 from .api.health import router as health_router
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await session_store.recover_interrupted_tasks()
     yield
     logger.info("Shutting down Emibot runtime...")
+    await task_manager.shutdown()
     await close_db()
 
 
