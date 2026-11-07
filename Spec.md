@@ -37,6 +37,7 @@ Lab1/
 │   │   ├── health.py            GET /api/health  
 │   │   ├── config_status.py     [第二版新增] GET /api/config/status（探测密钥配置状态，不泄露内容）  
 │   │   ├── sessions.py          [第二版新增] RESTful 会话 CRUD 与在线消息触发接口  
+│   │   ├── attachments.py       [第二版新增] 附件预览加载（GET）与 Windows 默认应用调起（POST open）接口  
 │   │   ├── chat.py              POST /api/chat（离线 SSE）与 POST /api/chat/abort（任务中断）  
 │   │   ├── stream.py            [第二版新增] GET /api/chat/stream（会话级解耦 SSE 实时增量订阅）  
 │   │   └── schemas.py           请求、响应、任务与事件的 Pydantic 数据模型  
@@ -47,34 +48,41 @@ Lab1/
 │   │   ├── llm_client.py        [第二版新增] OpenAI 兼容协议异步流式 HTTP 客户端（基于 httpx）  
 │   │   ├── online_agent.py      [第二版新增] 真实大模型在线 Agent 外观实现  
 │   │   ├── react.py             [第二版新增] ReAct 循环执行引擎（推理-行动-观察循环）  
-│   │   ├── tools/               [第二版新增] 工具与技能预留抽象层  
+│   │   ├── tools/               [第二版新增] 工具与技能抽象层  
 │   │   │   ├── __init__.py  
 │   │   │   ├── base.py          BaseTool 协议与 ToolCall 模型  
-│   │   │   └── registry.py      统一工具注册中心（本阶段为空）  
+│   │   │   ├── registry.py      统一工具注册中心（注册 read_attachment）  
+│   │   │   ├── attachment_tool.py [第二版新增] read_attachment 工具实现（调用解析器读取附件文本）  
+│   │   │   └── parsers/         [第二版新增] 多格式文本提取解析器（docx, xlsx, pptx, pdf, code/text）  
+│   │   │       ├── __init__.py  
+│   │   │       ├── doc_parser.py  
+│   │   │       ├── pdf_parser.py  
+│   │   │       └── text_parser.py  
 │   │   ├── task_manager.py      [第二版新增] 后台解耦生成任务管理器（支持多会话并发与广播）  
 │   │   └── factory.py           唯一替换点：选哪个 Agent  
 │   └── web/  
-│       ├── index.html           应用外壳 + 内联 SVG 图标库（顶栏新增交互式形态切换器）  
+│       ├── index.html           应用外壳 + 内联 SVG 图标库（顶栏新增交互式形态切换器、通用深色模态提示与确认弹窗）  
 │       ├── css/  
 │       │   ├── tokens.css       设计令牌（颜色、圆角、间距、字号、布局、形态与中断状态）  
 │       │   ├── base.css         reset、排版、滚动条、可访问性基础  
 │       │   ├── layout.css       顶栏、主侧栏（含缩略态）、内容区、响应式断点  
-│       │   ├── components.css   导航项、徽标、状态圆点、按钮、形态开关胶囊、模态确认弹窗、占位页  
-│       │   └── chat.css         对话页双列布局、会话列表侧栏、空状态、消息气泡、Markdown 排版、底部复制栏、输入区  
+│       │   ├── components.css   导航项、徽标、状态圆点、按钮、形态开关胶囊、模态提示与确认弹窗、占位页  
+│       │   └── chat.css         对话页双列布局、会话列表侧栏、空状态、待发送附件栏、气泡附件卡片、图片缩略图、工具执行胶囊、Markdown 排版、底部复制栏、输入区  
 │       └── js/  
 │           ├── main.js          启动入口：构建导航、初始化路由、装配视图  
 │           ├── routes.js        路由与导航的唯一配置源  
-│           ├── icons.js         SVG symbol 的 id 常量  
+│           ├── icons.js         SVG symbol 的 id 常量（新增回形针、文件类型与工具动效图标）  
 │           ├── router.js        hash 路由解析、主侧栏折叠切换与视图显隐  
-│           ├── store.js         双形态状态管理：离线纯内存数据源与在线持久化数据源、会话级流状态映射  
-│           ├── api.js           RESTful API 客户端与会话级 SSE 订阅客户端  
+│           ├── store.js         双形态状态管理：离线纯内存数据源与在线持久化数据源、待发送附件池、会话级流状态映射  
+│           ├── api.js           RESTful API 客户端（包含附件打开与预览）与会话级 SSE 订阅客户端  
 │           ├── dom.js           DOM 工具与时间戳格式化函数  
 │           ├── markdown.js      [第二版新增] 零依赖安全 DOM 级 Markdown 解析与纯文本提取工具  
 │           └── views/  
-│               ├── chat.js      对话工作区与会话列表视图控制器（形态切换、解耦流式订阅、Markdown 渲染、删除确认与一键复制）  
+│               ├── chat.js      对话工作区与会话列表视图控制器（形态切换、附件添加/校验/移除/打开、模型视觉拦截、ReAct 工具过程展示、解耦流式订阅、Markdown 渲染、删除确认与一键复制）  
 │               └── placeholder.js 占位页视图  
 ├── data/                        [第二版新增] 本地持久化数据目录（受 .gitignore 忽略）  
-│   └── emibot.db                本地 SQLite 数据库文件  
+│   ├── emibot.db                本地 SQLite 数据库文件  
+│   └── attachments/             [第二版新增] 附件持久化存储目录（按 session_id 分布）  
 ├── Archive/                     [阶段归档] 历史阶段规格与需求归档目录（受 .gitignore 忽略）  
 │   ├── vA_0_intent.md  
 │   └── vA_0_spec.md  
@@ -102,25 +110,28 @@ Lab1/
 浏览器端（原生 ES Modules）  
 ├── 顶栏形态切换器（离线 ⇄ 在线）  
 ├── 对话工作区（views/chat.js）  
-│   ├── 离线数据流：内存 store.js ── POST /api/chat（直连 MockAgent 同步 SSE 直出）  
+│   ├── 待发送附件池与多源输入（store.js：按钮选择、拖拽进输入区、Ctrl+V 粘贴/截图）  
+│   ├── 离线数据流：内存 store.js ── POST /api/chat（直连 MockAgent 同步 SSE 直出，文字反馈附件接收）  
 │   └── 在线数据流：  
-│       ├── 会话管理：RESTful API（GET/POST/PATCH/DELETE /api/sessions）── SQLite 持久化  
-│       ├── 触发生成：POST /api/sessions/{session_id}/messages ── 202 异步任务  
-│       ├── 解耦订阅：GET /api/chat/stream?session_id={id} ── 接收 SSE delta 增量  
+│       ├── 会话管理：RESTful API（GET/POST/PATCH/DELETE /api/sessions）── SQLite 持久化与附件目录级联清理  
+│       ├── 附件操作：POST /api/attachments/{id}/open（Windows 默认应用调起）、GET /api/attachments/{id}/preview  
+│       ├── 触发生成：POST /api/sessions/{session_id}/messages ── 发送时模型视觉探测与拦截、202 异步任务  
+│       ├── 解耦订阅：GET /api/chat/stream?session_id={id} ── 接收 SSE delta 增量与 tool_start/tool_done 过程  
 │       └── 任务中断：POST /api/chat/abort ── 中断指定会话正在进行的任务  
 FastAPI 服务端（Assistant/app.py）  
 ├── 静态托管与配置检查：/api/config/status（安全探测密钥配置状态）  
 ├── 异步持久化仓储层（storage/，基于 aiosqlite）：  
-│   ├── SQLite（WAL 模式 + Per-Connection 外键开启）── sessions 表、messages 表、generation_tasks 表  
+│   ├── SQLite（WAL 模式 + Per-Connection 外键开启）── sessions 表、messages 表、generation_tasks 表、attachments 表  
+│   ├── 磁盘附件副本管理（data/attachments/{session_id}/，随会话删除彻底清理）  
 │   └── 增量节流写盘（流式缓冲定时刷盘，done/interrupted 强制 flush）  
 ├── 后台任务管理器（agent/task_manager.py）：  
 │   ├── 并发任务调度池（多会话独立 asyncio.Task，互不阻塞，单会话严格串行）  
 │   ├── 增量缓冲区与广播分发队列（动态挂载/卸载前端 SSE 订阅者，支持断线重连追赶）  
 │   └── 进程异常恢复补偿（启动扫描中断状态）  
 └── 智能体执行层（agent/）：  
-    ├── 离线形态：MockAgent（纯文本关键词流式直出）  
-    └── 在线形态：OnlineAgent ── ReActLoop ── LLMClient（OpenAI 兼容协议流式）  
-                                        └── ToolRegistry（统一工具注册中心，第二版为空）
+    ├── 离线形态：MockAgent（纯文本关键词流式直出，带附件数量与文件名反馈）  
+    └── 在线形态：OnlineAgent ── ReActLoop ── LLMClient（OpenAI 兼容协议流式，带视觉能力探测）  
+                                        └── ToolRegistry（统一工具注册中心，注册 read_attachment，依赖 parsers/ 提取文本）
 ```
 
 ### 2.2 前端模块职责与依赖方向
@@ -263,11 +274,16 @@ FastAPI 服务端（Assistant/app.py）
 3. 循环入口：`async def run(self, messages: list[ChatMessage]) -> AsyncIterator[str]`；
 4. 动作分发点：`async def dispatch_action(self, tool_call: ToolCall) -> str`；
 5. 最大步数上限：`max_steps = 5`，若达到最大步数仍未生成最终回答，下发 `INTERNAL_ERROR` 异常事件并安全中止。
-6. **第二版特化约束（无工具运行与流式防泄露）**：
-7. 严格遵循 Intent B1.4 与 B1.5 规定：第二版工具注册中心保留统一抽象协议，但**不注册任何具体工具（`ToolRegistry.is_empty() == True`）**；
-8. **流式防泄露策略**：无工具运行阶段，Prompt 模板**严禁**注入要求模型输出 `Thought:` / `Final Answer:` 文本前缀的指令，避免 Thought 思考过程随流式推送到前端违反“不展示模型推理过程”规范；而是使用标准对话系统提示词，模型单次流式输出直接作为最终回答向订阅流抛出；
-9. 保留 `ReActLoop.run` 循环骨架与 `dispatch_action` 入口，当且仅当检测到模型命中结构化工具调用时才进入分发；若分发点校验到 `ToolRegistry.is_empty()`，则安全阻断动作分发；
-10. 后续阶段接入具体工具时，统一基于 OpenAI 原生 `tools` 与 `tool_calls` 结构化参数交互，不依赖脆弱的文本解析器。
+6. **第二版特化约束与首个工具接入演进（B1.15）**：
+7. **初始基线（B1.1 ~ B1.12）**：工具注册中心保持为空（`ToolRegistry.is_empty() == True`），Prompt 严禁要求模型输出 `Thought:` / `Final Answer:` 前缀标记，杜绝思考文本提前流式上屏；
+8. **首个工具接入（自 B1.15 起）**：在 `ToolRegistry` 中正式注册单例 `ReadAttachmentTool`（工具名 `read_attachment`）。
+9. **工具执行全链路与流式过程广播时序**：
+   - 当本轮对话包含非图片附件时，系统在上下文显式提供附件元数据（`attachment_id` 与文件名），允许模型发起 `tool_calls`；
+   - 当 `ReActLoop` 检测到 `tool_calls` 命中 `read_attachment`：
+     ① **广播工具开始事件**：通过 `TaskManager` 向前端订阅流广播 `tool_start` 事件（携带附件名与“正在读取附件 xxx...”状态文案），前端在气泡内呈现转圈读取胶囊；
+     ② **安全解析与沙箱执行**：调用 `dispatch_action`，严格基于当前 `session_id` 校验附件所属权（禁止跨会话越权访问），由 `parsers/` 提取纯文本并执行 10,000 字符安全截断（超限追加截断声明）；
+     ③ **广播工具完成事件**：向前端下发 `tool_done` 事件（标记成功或返回错误信息）；
+     ④ **上下文回填与终答流式输出**：将观察结果以 `role: tool` 消息回填历史上下文，再次调用大模型，生成最终回答（Final Answer）并通过既有 `delta` 事件流式推送。
 
 
 ### 2.7 功能分支拆分
@@ -283,6 +299,7 @@ FastAPI 服务端（Assistant/app.py）
 | 第二版 | 6      | `feature/online-react-agent`    | 本机模型配置读取、OpenAI 兼容流式客户端（LLMClient）、ReAct 循环引擎、工具注册中心预留、多轮上下文构建与中文错误提示                                                                                                                         | B1.2、B1.3、B1.4、B1.5、B1.6                                | 已完成 |
 | 第二版 | 7      | `feature/generation-decoupling` | 后台解耦任务管理器（TaskManager）、`POST /api/sessions/{id}/messages` 异步生成触发、会话级订阅流 `GET /api/chat/stream`、任务中断 `POST /api/chat/abort`、生成中切换形态安全中断（`B1_1_3`）、停服崩溃状态恢复与多会话并发验收 | B1.8、B1.1（B1_1_3 生成中中断收尾）                   | 已完成 |
 | 第二版 | 8      | `feature/chat-ux-enhancements`  | 在线形态 Agent 回复安全 Markdown 实时渲染、删除会话自定义深色模态二次确认弹窗、双形态消息气泡底部纯文本一键复制按钮与反馈 | B1.10、B1.11、B1.12                                         | 已完成 |
+| 第二版 | 9      | `feature/attachments-and-tools` | 对话多源附件添加（按钮/拖拽/粘贴）、格式与大小拦截、附件持久化与级联清理、Windows 默认应用调起、图片模型视觉校验拦截、首个工具 read_attachment 接入与 ReAct 过程展示 | B1.13、B1.14、B1.15                                         | 未开始 |
 
 
 ---
@@ -308,6 +325,11 @@ FastAPI 服务端（Assistant/app.py）
 | -                           | `MAX_MESSAGES`         | `30`                                      | 常量；单次请求滑动窗口最大上下文条数                                                                                                                                                                                                                                                                                                                       |
 | -                           | `MAX_MESSAGE_CHARS`    | `4000`                                    | 常量；单条用户输入最大字符限制                                                                                                                                                                                                                                                                                                                                |
 | -                           | `WEB_DIR`              | `Path(__file__).resolve().parent / "web"` | 常量；前端静态资源目录                                                                                                                                                                                                                                                                                                                                            |
+| `ASSISTANT_ATTACHMENT_DIR`  | `ATTACHMENT_DIR`        | `Path` / `data/attachments`               | 常量或环境变量；本地持久化附件副本存放根路径，按会话子目录隔离                                                                                                                       |
+| -                           | `MAX_ATTACHMENT_COUNT`  | `3`                                       | 常量；单条消息允许添加的附件数量上限                                                                                                                                                 |
+| -                           | `MAX_ATTACHMENT_SIZE`   | `5242880` (5MB)                           | 常量；单个附件允许的最大字节数（5 * 1024 * 1024）                                                                                                                                     |
+| -                           | `ATTACHMENT_TEXT_TRUNCATE_LIMIT` | `10000`                          | 常量；非图片附件文本提取字符数截断上限（超出时截断并在末尾标注声明）                                                                                                                 |
+| -                           | `ALLOWED_ATTACHMENT_EXTS` | 集合常量                                | 常量；允许的附件扩展名白名单（包含图片 4 种、文档 4 种、文本 2 种、代码 13 种，旧版 .doc/.xls/.ppt 明确不在白名单中）                                                                 |
 
 
 - 系统内所有模块需要读取环境变量与常量时，统一从 `Assistant.config` 导入上方定义的 **Python 导出常量名**，严禁在其它业务模块散落 `os.environ.get(...)`。
@@ -371,7 +393,8 @@ FastAPI 服务端（Assistant/app.py）
 -
 行为（严格先后顺序）：
 1. 若该会话在 `TaskManager` 中有正在运行的生成任务，**首先调用 `await task_manager.cancel_and_wait(session_id)` 取消任务并等待协程收尾退出**，避免任务收尾写库与数据库级联删除发生竞态或外键冲突；
-2. 随后执行数据库删除，依靠外键 `ON DELETE CASCADE` 级联删除该会话及其关联的所有 `messages` 与 `generation_tasks` 记录。
+2. 随后执行数据库删除，依靠外键 `ON DELETE CASCADE` 级联删除该会话及其关联的所有 `messages`、`generation_tasks` 与 `attachments` 记录；
+3. 同步清理磁盘附件目录：在文件系统层调用 `shutil.rmtree(config.ATTACHMENT_DIR / session_id, ignore_errors=True)`，彻底物理清理该会话存储的全部本地附件副本。
 
 - 响应：`204 No Content`（删除成功，或会话原本不存在时保持幂等）。
 
@@ -385,14 +408,23 @@ FastAPI 服务端（Assistant/app.py）
 ```json
 [  
 {  
-"seq": 1,  
-"id": "m_u_1001",  
-"role": "user",  
-"content": "你好",  
-"status": "done",  
-"error_code": null,  
-"error_message": null,  
-"created_at": "2026-11-06T18:00:00+08:00"  
+"seq": 1,
+"id": "m_u_1001",
+"role": "user",
+"content": "请分析附件中的需求文档",
+"status": "done",
+"error_code": null,
+"error_message": null,
+"attachments": [
+  {
+    "id": "att_u_981a",
+    "filename": "requirements.docx",
+    "file_type": "docx",
+    "file_size": 28410,
+    "is_image": false
+  }
+],
+"created_at": "2026-11-06T18:00:00+08:00"
 },  
 {  
 "seq": 2,  
@@ -412,28 +444,57 @@ FastAPI 服务端（Assistant/app.py）
 #### 3.4.6 发送在线消息触发生成（`POST /api/sessions/{session_id}/messages`）
 
 - 模块位置：`Assistant/api/sessions.py`
-- 用途：在线形态下发送用户消息，触发后台独立解耦生成任务。
-- 请求体：		{  
-"content": "请分析一下这段代码"  
-}
+- 用途：在线形态下发送用户消息及可选附件（0~3 个），触发后台独立解耦生成任务。
+- 请求内容类型：`multipart/form-data`（字段：`content: str` 表单文本，`files: list[UploadFile]` 文件列表）
 - 响应状态码：`202 Accepted`
-- 响应体（由服务端统一生成 `task_id`、`user_message_id`、`assistant_message_id`）：		{  
-"task_id": "t_789abc",  
-"session_id": "s_on_123456",  
-"user_message_id": "m_u_001",  
-"assistant_message_id": "m_a_002",  
-"status": "running"  
+- 响应体（由服务端统一生成 `task_id`、`user_message_id`、`assistant_message_id` 及附件列表）：
+```json
+{
+  "task_id": "t_789abc",
+  "session_id": "s_on_123456",
+  "user_message_id": "m_u_001",
+  "assistant_message_id": "m_a_002",
+  "attachments": [
+    {
+      "id": "att_u_981a",
+      "filename": "requirements.docx",
+      "file_type": "docx",
+      "file_size": 28410,
+      "is_image": false
+    }
+  ],
+  "status": "running"
 }
--
-行为与约束（严格防竞态顺序）：
-1. 入参校验（`content` 去除首尾空白后非空，长度 `1..4000` 字符），非法返回 `422 Unprocessable Entity`；
-2. 校验会话是否存在，不存在返回 `404 Not Found`；
-3. **同步检查与原子占位（防 409 竞态）**：在同一个同步执行段（中间无任何 `await`）中检查 `TaskManager` 是否已存在该 `session_id` 的活跃任务或占位锁；若已存在则立即返回 `409 Conflict`（单一会话严格串行执行）；若不存在则立即在 `TaskManager` 中同步登记该会话占位（若后续数据库写入抛错则在 `except` 中释放占位）；
-4. **单事务持久化三表记录**：在 `SessionStore` 写锁保护的同一个 SQLite 事务中：5. 插入用户消息（`id = m_u_...`, `status = 'done'`）；
-6. 插入初始助手占位消息（`id = m_a_...`, `status = 'streaming'`, `content = ''`），自增 `seq` 确保用户消息严格在助手消息之前；
-7. 插入 `generation_tasks` 记录（`task_id = t_...`, `session_id`, `message_id = m_a_...`, `status = 'running'`）；
-8. 更新当前会话的 `updated_at` 为当前时间戳；
-9. 在 `TaskManager` 启动后台独立 `asyncio.Task` 开始 ReAct 循环流式生成，立即返回 `202 Accepted`。
+```
+- 行为与约束（严格防竞态与前置拦截顺序）：
+1. **入参与附件规格校验**：
+   - `content` 允许纯文本或搭配附件时非空，长度 `1..4000` 字符；
+   - 附件数量上限校验：`len(files) <= 3`，超出返回 `422 Unprocessable Entity`（错误码 `ATTACHMENT_COUNT_EXCEEDED`）；
+   - 单附件规格校验：任一文件超出 5MB 返回 422（错误码 `ATTACHMENT_TOO_LARGE`）；任一文件扩展名不在白名单（明确拒绝 `.doc`、`.xls`、`.ppt` 等旧格式）返回 422（错误码 `ATTACHMENT_TYPE_NOT_SUPPORTED`）；
+2. **会话存在性检查**：校验会话是否存在，不存在返回 `404 Not Found`；
+3. **图片模型视觉能力探测与拦截（B1.14）**：
+   - 若附件列表中包含图片（`.png`, `.jpg`, `.jpeg`, `.webp`）：在落库前触发视觉能力探测（优先读取当前配置模型的视觉支持缓存，若无缓存则向模型 API 端点发起带图片测试探测）；
+   - 若 API 返回报错（表明不支持图片输入/多模态），立即阻断发送，返回 `400 Bad Request`，体为 `{"code": "IMAGE_NOT_SUPPORTED", "message": "当前模型不支持图片输入"}`；**本次请求完全终止，不写入用户消息、不保存附件到磁盘**；
+4. **同步检查与原子占位（防 409 竞态）**：在同一个同步执行段中检查 `TaskManager` 是否已存在该 `session_id` 的活跃任务或占位锁；若已存在立即返回 `409 Conflict`；若不存在立即同步登记占位；
+5. **物理落盘与单事务持久化四表记录**：
+   - 将附件文件写入 `data/attachments/{session_id}/{att_id}_{safe_filename}`；
+   - 在 `SessionStore` 写锁保护的同一个 SQLite 事务中原子执行：① 插入用户消息（`id = m_u_...`, `status = 'done'`）；② 批量插入 `attachments` 表记录；③ 插入初始助手占位消息（`id = m_a_...`, `status = 'streaming'`, `content = ''`）；④ 插入 `generation_tasks` 记录（`task_id = t_...`, `status = 'running'`）；⑤ 刷新会话 `updated_at`；
+6. 在 `TaskManager` 启动后台独立 `asyncio.Task` 开始 ReAct 循环流式生成，立即返回 `202 Accepted`。
+
+#### 3.4.7 调起 Windows 系统默认应用打开附件（`POST /api/attachments/{attachment_id}/open`）
+
+- 模块位置：`Assistant/api/attachments.py`
+- 用途：用户在气泡中点击附件时，由后端在本地调用 Windows 系统默认关联程序打开存储目录中的附件副本。
+- 响应状态码：
+  - `200 OK`：`{"status": "opened"}`（成功调起操作系统默认应用）；
+  - `404 Not Found`：`{"code": "ATTACHMENT_NOT_FOUND", "message": "文件已不存在"}`（数据库无记录，或本地磁盘目录中的文件副本已被手动删除）。
+- 核心实现：服务端查询 `attachments` 表获取存储绝对路径，在 Windows 下使用 `os.startfile(str(storage_path.resolve()))` 调起系统默认程序。
+
+#### 3.4.8 图片附件缩略图预览（`GET /api/attachments/{attachment_id}/preview`）
+
+- 模块位置：`Assistant/api/attachments.py`
+- 用途：供前端气泡内 `<img>` 标签加载展示图片缩略图。
+- 响应：`FileResponse`，携带正确的 `image/png`、`image/jpeg`、`image/webp` 等 Content-Type 与客户端缓存头。
 
 ### 3.5 聊天与解耦流式生成接口
 
@@ -474,6 +535,8 @@ FastAPI 服务端（Assistant/app.py）
 |-----------|--------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------|
 | `meta`    | `{"task_id":"t_123","session_id":"s_on_456","message_id":"m_a_8f3a","created_at":"2026-11-06T10:20:13+08:00","model":"gpt-4o-mini"}` | 流启动时发送且仅发送一次                      |
 | `delta`   | `{"text":"增量文本"}`                                                                                                            | 每次产出增量文本块时发送，可发送多次    |
+| `tool_start` | `{"tool":"read_attachment","attachment_name":"a.docx","status_text":"正在读取附件 a.docx..."}`                               | Agent 调用工具开始执行时向前端广播，触发界面显示过程状态卡片 |
+| `tool_done`  | `{"tool":"read_attachment","status":"success"` 或 `"error"}`                                                                  | Agent 完成工具调用获得观察结果时广播一次                     |
 | `done`    | `{"finish_reason":"stop"                                                                                                             | "interrupted","duration_ms":1820}`                        | 回复正常生成完毕或被中断时发送一次，随后结束流 |
 | `error`   | `{"code":"<ERROR_CODE>","message":"<中文友好提示文案>"}`                                                         | 生成中途发生异常时发送一次，随后结束流 |
 
@@ -492,6 +555,12 @@ FastAPI 服务端（Assistant/app.py）
 | `TIMEOUT`          | 连接或读取模型服务商响应超时（`httpx.TimeoutException`）                                             | `连接模型服务商超时，请检查您的网络连接与代理设置。`                |
 | `UPSTREAM_ERROR`   | 上游返回 5xx 故障，或除 401/403/429 外的其他 4xx 错误（如 400/404 模型名或端点配置有误） | `模型服务商返回异常，请检查模型与端点配置或稍后重试。`             |
 | `INTERNAL_ERROR`   | 本地未预期异常或 ReAct 步数超限                                                                          | `生成过程发生异常，请重试。`                                                    |
+| `ATTACHMENT_TOO_LARGE` | 单个附件大小超过 5MB 限制                                                                            | `附件大小超过限制（单个文件不得超过 5MB）。`                                     |
+| `ATTACHMENT_TYPE_NOT_SUPPORTED` | 文件格式不在允许清单中或属于不受支持的旧格式（.doc/.xls/.ppt）                                        | `不支持的文件类型，仅支持常见图片、文档、文本与代码文件。`                       |
+| `ATTACHMENT_COUNT_EXCEEDED` | 单条消息附件总数超过 3 个                                                                             | `单条消息最多添加 3 个附件。`                                                   |
+| `ATTACHMENT_NOT_FOUND` | 本地存储目录中的附件副本已被手动删除或不存在                                                         | `文件已不存在。`                                                                 |
+| `IMAGE_NOT_SUPPORTED` | 发送包含图片附件时探测到当前配置的模型不支持图片视觉输入                                             | `当前模型不支持图片输入。`                                                       |
+| `ATTACHMENT_READ_FAILED` | 附件被加密、损坏、编码不受支持或属于扫描版 PDF                                                       | `附件读取失败，文件可能已损坏、被加密或属于扫描版 PDF。`                         |
 
 
 ### 3.7 SQLite 数据库模式与表结构（`data/emibot.db`）
@@ -536,6 +605,22 @@ CREATE TABLE IF NOT EXISTS generation_tasks (
   
 CREATE INDEX IF NOT EXISTS idx_messages_session_seq ON messages(session_id, seq);  
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON generation_tasks(status);
+
+-- 附件持久化表（B1.13 新增，随会话/消息级联删除）  
+CREATE TABLE IF NOT EXISTS attachments (  
+    id TEXT PRIMARY KEY,  
+    session_id TEXT NOT NULL,  
+    message_id TEXT NOT NULL,  
+    filename TEXT NOT NULL,  
+    file_type TEXT NOT NULL,  
+    file_size INTEGER NOT NULL,  
+    storage_path TEXT NOT NULL,  
+    created_at TEXT NOT NULL,  
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,  
+    FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE  
+);  
+CREATE INDEX IF NOT EXISTS idx_attachments_session ON attachments(session_id);  
+CREATE INDEX IF NOT EXISTS idx_attachments_message ON attachments(message_id);
 ```
 
 - **连接生命周期与并发写锁规定**：- `aiosqlite` 无内置连接池且每个连接对应一个后台线程；为保证代码精简好维护并杜绝频繁创建线程与 `database is locked` 异常，应用在 FastAPI `lifespan` 周期内**复用单一长连接（Single Shared Connection）**。
@@ -555,16 +640,25 @@ class SendMessageRequest(BaseModel):
 content: str = Field(min_length=1, max_length=4000)  
 
 
+class AttachmentInfo(BaseModel):  
+    """附件元数据传输模型。"""  
+    id: str  
+    filename: str  
+    file_type: str  
+    file_size: int  
+    is_image: bool = False  
+
 class ChatMessage(BaseModel):  
-"""系统内部流转、离线请求与历史持久化的领域实体模型（允许 user 与 assistant 角色）。"""  
-id: str | None = None  
-role: Literal["user", "assistant"]  
-content: str = Field(default="")  
-seq: int | None = None  
-status: Literal["done", "streaming", "error", "interrupted"] = "done"  
-error_code: str | None = None  
-error_message: str | None = None  
-created_at: str | None = None  
+    """系统内部流转、离线请求与历史持久化的领域实体模型（允许 user 与 assistant 角色）。"""  
+    id: str | None = None  
+    role: Literal["user", "assistant"]  
+    content: str = Field(default="")  
+    seq: int | None = None  
+    status: Literal["done", "streaming", "error", "interrupted"] = "done"  
+    error_code: str | None = None  
+    error_message: str | None = None  
+    attachments: list[AttachmentInfo] = Field(default_factory=list)  
+    created_at: str | None = None  
 
 
 class ToolCall(BaseModel):  
@@ -598,7 +692,7 @@ async def execute(self, **kwargs) -> str:
 ```
 
 - **离线 `ChatRequest` 兼容约定**：`Assistant/api/schemas.py` 中的 `ChatRequest`（供离线 `POST /api/chat` 使用）继续接收 `messages: list[ChatMessage]`（允许 `"user"` 与 `"assistant"` 角色交错，并在 validator 中校验每条非空、`<= 4000` 字符且最后一条为 `"user"`），确保离线多轮对话完全兼容。
-- **外部核心依赖**：第二版在 `requirements.txt` 中引入 `httpx>=0.28,<1.0`（提供异步流式 HTTP 客户端）与 `aiosqlite>=0.21,<1.0`（提供异步 SQLite 驱动）。
+- **外部核心依赖**：第二版在 `requirements.txt` 中引入 `httpx>=0.28,<1.0`（提供异步流式 HTTP 客户端）、`aiosqlite>=0.21,<1.0`（提供异步 SQLite 驱动），并在 B1.15 引入非图片附件解析库：`python-docx>=1.1.0`（Word 文档提取）、`openpyxl>=3.1.2`（Excel 表格提取）、`python-pptx>=0.6.23`（PPT 演示文稿提取）、`pypdf>=4.0.0`（文字版 PDF 文本提取）。
 
 ### 3.9 前端数据模型与编码约定
 
@@ -613,6 +707,7 @@ async def execute(self, **kwargs) -> str:
   onlineSessions: [],              // 在线会话列表（同步自 SQLite，ID 前缀 s_on_）  
   sessionDrafts: {},               // 各会话未发送草稿字典：{ [sessionId]: text }（依靠 s_off_ 与 s_on_ 前缀天然隔离）  
   streamingBySession: {},          // 当前活跃 SSE 订阅流映射：{ [sessionId]: { abortController, taskId } }  
+  pendingAttachments: [],          // 当前输入区待发送附件池：[{ id, file, name, size, ext, isImage, previewUrl }]  
   queue: []                        // 离线形态发送队列  
 }
 ```
@@ -631,7 +726,8 @@ content: '',
 createdAt: Date,  
 status: 'done' | 'streaming' | 'error' | 'interrupted',  
 errorCode: null | string,        // 关联的系统错误码  
-errorMessage: null | string      // 后端根据 3.6 映射表返回的标准中文错误提示  
+errorMessage: null | string,     // 后端根据 3.6 映射表返回的标准中文错误提示  
+attachments: []                  // 附件列表：[{ id, filename, fileType, fileSize, isImage }]  
 }
 ```
 
@@ -1070,3 +1166,185 @@ status: Literal["running", "completed", "interrupted", "failed"]
        - **视觉反馈状态机**：复制成功后，为 `copyBtnEl` 添加 `.is-copied` 类（配色变为成功绿/主色高亮），内部 `<use>` 图标引用切换为 `#icon-check`，`.msg__copy-label` 文本更新为 `"已复制"`；在按钮实例上记录定时器 ID，延时 `1500ms` 后自动移除 `.is-copied`、恢复 `#icon-copy` 图标与 `"复制"` 文案（若 1500ms 内再次点击则先 `clearTimeout` 再重新计时）。
 
  
+
+
+---
+
+##### B1.13 对话中添加附件与默认应用打开
+
+**B1_13_1 多源附件添加交互与待发送区内存管理**
+
+- 状态：已确认
+- 需求描述：支持通过点击回形针按钮选择文件、拖拽文件进入输入区、以及 `Ctrl+V` 粘贴（支持本地文件与系统剪贴板截图）三种方式添加附件；在输入框上方动态展现待发送附件列表（包含文件名、格式图标、文件大小与单独移除按钮）；离线与在线形态支持相同添加与接收能力。
+- 详细方案设计：
+  1. 触发入口与多源监听（`views/chat.js` 与 `index.html`）：
+     - 在输入区左侧工具栏增设回形针按钮 `<button class="chat-input__action-btn" id="attach-btn" type="button" aria-label="添加附件" title="添加附件"><svg class="icon"><use href="#icon-paperclip"></use></svg></button>`，绑定隐藏的 `<input type="file" id="file-input" multiple>`，点击触发系统文件选择框；
+     - 监听整个输入框容器 `.chat-input` 的 `dragover`（阻止默认行为并为容器添加 `.is-dragover` 高亮边框）、`dragleave`（移除高亮）与 `drop`（提取 `e.dataTransfer.files` 并移除高亮）事件；
+     - 监听输入框文本域 `#message-input` 的 `paste` 事件：遍历 `e.clipboardData.items`，过滤出文件对象（`item.kind === 'file'`）；若检测到剪贴板图片（`item.type.startsWith('image/')` 且文件名为空或默认 `image.png`），自动按 `image_${Date.now()}.png` 生成规范文件名转换为 `File` 对象；
+  2. 待发送附件池状态管理（`store.js`）：
+     - 在 `store.state` 中维护待发送附件数组 `pendingAttachments`，每个条目结构为：`{ id: 'att_tmp_' + uid, file: File, name: file.name, size: file.size, ext: string, isImage: boolean, previewUrl: string | null }`；
+     - 若属于图片类型，调用 `URL.createObjectURL(file)` 生成本地内存预览地址赋给 `previewUrl`；
+  3. 待发送区 DOM 渲染与独立移除交互（`chat.css` 与 `views/chat.js`）：
+     - 在输入框上方挂载待发送附件容器 `.pending-attachments`（当 `pendingAttachments` 为空时隐藏）；
+     - 每个附件渲染为胶囊卡片 `.pending-attachment-item`，显示文件分类小图标、文件名（超出宽度单行省略）、大小（格式化为 KB / MB）以及右上角移除按钮 `<button class="pending-attachment-item__remove" type="button" aria-label="移除">&times;</button>`；
+     - 点击移除按钮时：从 `store.pendingAttachments` 中精确移除该项；若存在 `previewUrl` 则显式调用 `URL.revokeObjectURL(previewUrl)` 释放内存；输入框中的文字与已保留的其它附件完全不受影响；
+     - 双形态统一：离线形态与在线形态均使用该完全相同的前端待发送区与内存管理。
+
+**B1_13_2 客户端全量前置校验与整批拒绝深色弹窗拦截**
+
+- 状态：已确认
+- 需求描述：添加附件时执行严格规格校验（格式白名单、单文件不超过 5MB、单条消息总数不超过 3 个）；只要本次添加中任一文件不合格，整批拒绝本次添加，弹出深色提示弹窗说明具体原因，输入区已有的合格附件保持不变。
+- 详细方案设计：
+  1. 允许类型白名单与扩展名判定（`Assistant/web/js/views/chat.js`）：
+     - 图片类：`.png`、`.jpg`、`.jpeg`、`.webp`；
+     - 文档类：`.docx`、`.xlsx`、`.pptx`、`.pdf`（明确禁止 `.doc`、`.xls`、`.ppt` 等旧格式二进制文件）；
+     - 文本类：`.md`、`.txt`；
+     - 代码类：`.py`、`.js`、`.ts`、`.json`、`.html`、`.css`、`.java`、`.c`、`.cpp`、`.go`、`.sh`、`.yaml`、`.sql`；
+     - 提取扩展名统一采用小写 `file.name.slice(file.name.lastIndexOf('.')).toLowerCase()`；
+  2. 整批拒绝前置校验算法：
+     - 当用户通过按钮、拖拽或粘贴传入一批文件 `incomingFiles: File[]` 时：
+       ① 校验总数量：若 `store.pendingAttachments.length + incomingFiles.length > 3`，立即判定违规，提示文案：“单条消息最多添加 3 个附件。”；
+       ② 校验单个文件格式：遍历 `incomingFiles`，若发现存在任一文件的扩展名不属于上述白名单，立即判定违规，提示文案：“文件 '${file.name}' 格式不受支持。仅支持常见图片、文档、文本与代码文件。”；
+       ③ 校验单个文件大小：遍历 `incomingFiles`，若发现存在任一文件 `file.size > 5 * 1024 * 1024`（5MB），立即判定违规，提示文案：“文件 '${file.name}' 大小超出 5MB 限制。”；
+     - 违规处理：一旦命中上述任一违规，**整批丢弃本次传入的全部文件**（不加入 `pendingAttachments`），输入区已有的待发送附件完好保留；
+  3. 通用深色模态提示弹窗（Alert Modal）：
+     - 复用全局深色弹窗体系，在 `index.html` 中提供 `#alert-modal` 骨架；
+     - 弹窗展示警告标题“无法添加附件”与对应的违规原因文案；底部提供单个深色高亮“我知道了”按钮；
+     - 支持点击按钮、点击背景遮罩或按下键盘 `Escape` 键平滑关闭弹窗。
+
+**B1_13_3 在线附件持久化存储与会话级联清理机制**
+
+- 状态：已确认
+- 需求描述：在线形态下，发送消息时将附件复制存入本地应用专属目录，与原文件解耦；历史会话重开可读取可点击；删除对话时级联删除对应的附件副本；离线形态接收附件遵循相同校验规则，但不写磁盘、不执行工具，仅在对话中反馈收到附件。
+- 详细方案设计：
+  1. 存储目录与文件副本落盘规范：
+     - 存储基路径：`data/attachments/{session_id}/`，按会话唯一 ID 隔离划分独立的子文件夹；
+     - 文件命名：采用 `{attachment_id}_{safe_filename}`（生成服务端唯一 `att_u_` 前缀 ID，结合过滤非法路径字符的文件名），防止重名覆盖与路径穿越；
+     - 原文件解耦：在线发送时服务端将上传的文件流完整写入该专属目录；原用户磁盘上的原始文件即便被用户重命名、移动或删除，应用内的附件副本依然不受任何影响；
+  2. 数据表模式与外键级联：
+     - 在 SQLite 中创建 `attachments` 表（字段：`id`, `session_id`, `message_id`, `filename`, `file_type`, `file_size`, `storage_path`, `created_at`）；
+     - 关联 `sessions(id)` 与 `messages(id)` 均配置 `ON DELETE CASCADE` 外键级联；
+  3. 会话删除物理联动：
+     - 当用户删除在线会话时，在执行 `DELETE FROM sessions WHERE id = ?` 触发数据库级联删除记录的同时，后端在文件系统层调用 `shutil.rmtree(config.ATTACHMENT_DIR / session_id, ignore_errors=True)`，彻底物理清理该会话在磁盘上的所有附件副本文件；
+  4. 离线形态行为差异化：
+     - 离线形态下发送带附件消息时，附件数据仅在前端内存封装文件名与数量，随 `POST /api/chat` 传递给后端；`MockAgent` 不在本地磁盘创建任何文件，也不读写 SQLite，保持离线纯内存运行规范。
+
+**B1_13_4 消息气泡附件呈现与系统默认应用调起**
+
+- 状态：已确认
+- 需求描述：发送后附件在消息气泡中展示（图片显示缩略图，其余展示文件卡片）；点击附件时调用 Windows 系统默认应用打开应用目录里的副本；副本被手动删除后点击提示“文件已不存在”。
+- 详细方案设计：
+  1. 消息气泡附件列表 DOM 结构与排版（`chat.css` 与 `views/chat.js`）：
+     - 每条包含附件的消息卡片中挂载 `.msg__attachments` 容器；
+     - **图片附件**：渲染为 `.attachment-card.attachment-card--image`，内部挂载 `<img class="attachment-card__thumb" src="/api/attachments/{id}/preview" alt="{filename}" loading="lazy">`；缩略图最大尺寸限制为 `180px * 180px`，保持原宽高比，圆角边框并带有悬停放大与阴影动效；
+     - **非图片附件**：渲染为 `.attachment-card.attachment-card--file`，包含文件类型专属彩色小图标、两行省略的文件名与文件大小说明；
+     - 附件卡片具有可点击视觉反馈（指针悬停变为手型并微发光）；
+  2. Windows 系统默认应用调起（`Assistant/api/attachments.py`）：
+     - 前端点击气泡内的附件卡片时，调用 `POST /api/attachments/{attachment_id}/open`；
+     - 后端查询 `attachments` 表定位到 `storage_path`；
+     - 物理文件检查：若 `storage_path.is_file()` 为 `False`（附件副本此前被用户在本地文件夹中手动删除），后端返回 `404 Not Found`（错误码 `ATTACHMENT_NOT_FOUND`）；
+     - 调起操作系统程序：若文件存在，在 Windows 环境下异步调用 `os.startfile(str(storage_path.resolve()))` 调起系统默认关联程序（如 Word 打开 docx、Excel 打开 xlsx、系统看图软件打开图片、VS Code 打开代码文件），接口返回 `200 OK`；
+     - 前端反馈：若后端返回 404，前端调用通用深色提示弹窗，向用户明确提示：“文件已不存在”。
+
+---
+
+##### B1.14 图片附件的模型视觉能力校验与弹窗拦截
+
+**B1_14_1 发送时模型视觉能力探测与阻断拦截机制**
+
+- 状态：已确认
+- 需求描述：添加图片时不校验、不弹窗；在点击发送时校验当前配置模型是否支持图片输入；若模型 API 返回不支持，拦截本次发送，弹出提示“当前模型不支持图片输入”，清空本条消息的全部附件（图片与文档），但保留输入框中的文字。
+- 详细方案设计：
+  1. 发送时探测触发时序（`Assistant/api/sessions.py` 与 `Assistant/agent/llm_client.py`）：
+     - 用户在前端输入区添加图片并点击发送时，前端发起 `POST /api/sessions/{session_id}/messages` 请求；
+     - 后端检测到提交的文件列表中包含图片扩展名（`.png`, `.jpg`, `.jpeg`, `.webp`）；
+     - 视觉能力校验机制：系统维护运行时内存缓存 `_model_vision_cache: dict[str, bool]`；
+       - 若当前模型名称已有探测缓存且为 `True`，直接放行；若为 `False`，判定为不支持；
+       - 若无探测记录，向模型服务商发起轻量视觉探测请求（携带 1x1 最小合法图片 content 块向模型端点请求单 token 输出）；
+       - 若服务商返回成功，将该模型记录为支持视觉（`True`）并放行；
+       - 若服务商返回 `400 Bad Request` 或报错内容指出 `does not support image` / `invalid parameter`，将该模型标记为不支持（`False`）；
+  2. 后端 400 阻断与事务回滚：
+     - 探测到不支持图片时，接口立即返回 `400 Bad Request`，返回 JSON 结构体 `{"code": "IMAGE_NOT_SUPPORTED", "message": "当前模型不支持图片输入"}`；
+     - 拦截期间不执行数据库写操作，不保存附件到磁盘，杜绝垃圾数据生成；
+  3. 前端拦截状态机与输入保护（`Assistant/web/js/views/chat.js`）：
+     - 前端捕获到 `IMAGE_NOT_SUPPORTED` 响应码：
+       ① **阻断本次发送**：不将用户消息挂载上屏，不开启 SSE 订阅流；
+       ② **模态弹窗警示**：弹出通用深色模态提示弹窗，文案为“当前模型不支持图片输入”；
+       ③ **清空全部附件**：调用 `store.pendingAttachments.forEach(att => att.previewUrl && URL.revokeObjectURL(att.previewUrl))` 释放资源，将 `store.pendingAttachments` 重置为空数组并重新渲染待发送区（图片与文档一并清空）；
+       ④ **保留输入框文字**：文本框中的已有草稿文本完好保留，文本域重新聚焦，用户可直接调整后再次发送。
+
+**B1_14_2 视觉校验在双形态与切模型场景的适配**
+
+- 状态：已确认
+- 需求描述：离线形态（Mock 阶段）不模拟不支持，图片附件直接放行；添加图片后切换到不支持图片的模型，图片仍保留在待发送列表，发送时被拦截。
+- 详细方案设计：
+  1. 离线形态直接放行：
+     - 离线形态下无真实模型 API，发送包含图片的消息时跳过视觉探测，直接放行，MockAgent 正常生成包含文件数量与名称的离线回复；
+  2. 切换模型延迟校验保护：
+     - 用户在输入框添加图片附件后，无论在后台切换了模型还是修改了配置，前端待发送列表内的图片与文档始终保留在输入框上方；
+     - 探测与拦截时机严格限定在用户点击“发送”按钮的一刻触发，满足“切换模型后待发送列表图片保留，发送时被拦截”的规范。
+
+---
+
+##### B1.15 附件读取工具（首个 Tool）
+
+**B1_15_1 `read_attachment` 工具注册与安全沙箱执行**
+
+- 状态：已确认
+- 需求描述：在统一注册中心正式注册首个工具 `read_attachment`；参数传入附件标识 `attachment_id`，不传文件路径；系统在上下文告知 Agent 本条消息包含的附件及其标识；仅允许读取当前会话内的附件，防范越权与路径穿越。
+- 详细方案设计：
+  1. 工具协议实现与注册（`Assistant/agent/tools/attachment_tool.py`）：
+     - 实现 `ReadAttachmentTool`，满足 `BaseTool` 抽象协议：
+       - `name = "read_attachment"`；
+       - `description = "读取当前会话中用户上传的非图片附件（Word、Excel、PPT、文字版 PDF、文本及代码文件）的文本内容。"`；
+       - `parameters = {"type": "object", "properties": {"attachment_id": {"type": "string", "description": "待读取的附件唯一标识 ID"}}, "required": ["attachment_id"]}`；
+     - 在应用启动时自动向 `ToolRegistry` 注册该单例实例；
+  2. 上下文注入与权限沙箱隔离：
+     - 当用户发送包含非图片附件的消息时，后端在向模型注入上下文时附带附件描述提示词：`[当前消息包含附件: 文件名={filename}, 附件标识={attachment_id}, 类型={file_type}]`；
+     - 沙箱鉴权：工具被调用时，接收 `attachment_id` 参数及当前 `session_id`；工具首先从 SQLite `attachments` 表查询该附件记录；
+     - 若该附件不存在或所属 `session_id` 与当前活跃会话不匹配，严禁读取任何物理文件，直接返回错误字符串：`[错误：未在当前会话中找到该附件]`，防止跨会话越权与任意路径探测；
+  3. 多格式文本提取解析器（`Assistant/agent/tools/parsers/`）：
+     - `doc_parser.py`：
+       - Word（`.docx`）：使用 `python-docx` 读取正文段落与表格，按换行拼接；
+       - Excel（`.xlsx`）：使用 `openpyxl` 遍历非空工作表，将单元格转为 Markdown 表格或制表符分隔文本；
+       - PPT（`.pptx`）：使用 `python-pptx` 遍历幻灯片形状中的文本框提取文本；
+     - `pdf_parser.py`：
+       - PDF（`.pdf`）：使用 `pypdf.PdfReader` 逐页提取纯文本；
+     - `text_parser.py`：
+       - 文本与代码：以 `utf-8` 编码打开，若遇解码错误自动回退 `gbk`，读取 `.md`、`.txt` 以及所有允许的代码源文件全文。
+
+**B1_15_2 文件内容超长截断保护与失败降级策略**
+
+- 状态：已确认
+- 需求描述：超出长度上限时截断并在返回内容中明确告知已被截断，Agent 需在回答中说明；损坏、加密、编码异常、扫描版 PDF 等情况，工具只返回错误信息，Agent 如实告知用户，不得编造内容。
+- 详细方案设计：
+  1. 10,000 字符安全截断防线：
+     - 全局配置常量 `ATTACHMENT_TEXT_TRUNCATE_LIMIT = 10000`；
+     - 解析器提取出文本后，若字符数超过 10,000 字符：截取前 10,000 字符，并在末尾显式拼接系统说明字符串：`\n\n[注：该附件内容已超出长度上限，系统已自动截断前 10,000 字符]`；
+     - 系统提示词约束 Agent：当工具返回包含截断声明时，Agent 必须在最终回答中如实向用户声明由于文件过长仅分析了前半部分；
+  2. 扫描版 PDF 判定与错误返回：
+     - 若 `pypdf` 提取出的文本去除所有空白字符后长度为 0，判定该 PDF 属于扫描版或纯图片文档；
+     - 工具不崩溃也不调用 OCR，返回标准错误：`[读取失败：该 PDF 文件为扫描版或纯图片型文档，当前系统仅支持文字版 PDF]`；
+  3. 损坏、加密与编码异常安全捕获：
+     - 解析过程捕获 `pypdf.errors.FileNotDecryptedError`、`zipfile.BadZipFile`、`UnicodeDecodeError` 及文件读取 I/O 异常；
+     - 捕获异常后统一返回标准错误提示：`[读取失败：文件已加密、损坏或编码不受支持]`；
+     - Agent 提示词严格约束：当工具返回读取失败时，Agent 必须如实将失败原因告知用户，严禁凭空虚构或猜测文件内容。
+
+**B1_15_3 ReAct 工具调用全链路 SSE 展示与离线 Mock 文字反馈**
+
+- 状态：已确认
+- 需求描述：Agent 调用工具时对话界面显示调用过程（如“正在读取附件 xxx”）；离线形态发送带附件消息时不执行工具、不存附件，系统文字反馈收到文件（如“已收到 2 个文件：a.docx、b.py”）。
+- 详细方案设计：
+  1. ReAct 循环中工具调用流式事件广播（`Assistant/agent/react.py` 与 `task_manager.py`）：
+     - 在 `ReActLoop` 运行中，模型返回结构化 `tool_calls`（命中 `read_attachment`）：
+       ① 提取 `attachment_id` 并查询对应文件名；
+       ② 向所有活跃订阅队列广播 `tool_start` 事件：`event: tool_start\ndata: {"tool": "read_attachment", "attachment_name": filename, "status_text": "正在读取附件 " + filename + "..."}\n\n`；
+       ③ 调用 `await self.dispatch_action(tool_call)` 执行实际读取并获得结果文本；
+       ④ 广播 `tool_done` 事件：`event: tool_done\ndata: {"tool": "read_attachment", "status": "success"}\n\n`；
+       ⑤ 将提取结果作为 `role: tool` 消息追加至 ReAct 循环历史，再次驱动大模型生成最终回答；
+  2. 前端工具执行过程胶囊组件（`views/chat.js` 与 `chat.css`）：
+     - 前端在 SSE 增量订阅中监听 `tool_start` 事件：在当前 Agent 消息气泡内创建并挂载状态胶囊 `<div class="msg__tool-capsule"><span class="msg__tool-spinner"></span><span class="msg__tool-label">正在读取附件 xxx...</span></div>`；
+     - 收到 `tool_done` 事件后：胶囊状态标记为已完成（隐藏 spinner 或切换为静止小徽标），随后收到的模型流式增量文本无缝渲染在正文区；
+  3. 离线形态 Mock 阶段文字反馈：
+     - 离线形态下，若请求中包含 `pendingAttachments`，`MockAgent` 不调用工具、不读写本地文件；
+     - 后端提取附件数量与文件名列表，组装确定性中文回复：`已收到 ${count} 个文件：${fileNames.join('、')}。当前处于离线模式，不执行附件解析与工具调用。`，通过既有 SSE 直出流向前端推送，直观验证双形态一致的附件收发交互。
