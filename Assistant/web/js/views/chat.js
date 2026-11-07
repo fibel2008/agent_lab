@@ -832,12 +832,14 @@ async function handleSubmit() {
         const created = await createOnlineSession({ title });
         activeSession = addOnlineSessionToStore(created);
         switchSession(activeSession.id);
+        clearDraftText();
       } catch (err) {
         showBanner(`创建在线会话失败: ${err.message}`);
         return;
       }
     } else {
       activeSession = createSessionFromDraft(text);
+      clearDraftText();
     }
   }
 

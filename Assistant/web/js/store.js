@@ -189,6 +189,7 @@ export function addOnlineSessionToStore(sessionData) {
     messages: sessionData.messages || [],
   };
   state.onlineSessions.unshift(session);
+  state.draftText = '';
   sortSessions();
   return session;
 }
