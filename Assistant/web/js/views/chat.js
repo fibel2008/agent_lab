@@ -33,6 +33,7 @@ import {
   getActiveMessages,
   getActiveSession,
   getActiveSessionId,
+  getActiveSessionList,
   getCurrentDraft,
   getDraftText,
   getHistorySnapshot,
