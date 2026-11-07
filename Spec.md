@@ -59,8 +59,8 @@ Lab1/
 │       │   ├── tokens.css       设计令牌（颜色、圆角、间距、字号、布局、形态与中断状态）  
 │       │   ├── base.css         reset、排版、滚动条、可访问性基础  
 │       │   ├── layout.css       顶栏、主侧栏（含缩略态）、内容区、响应式断点  
-│       │   ├── components.css   导航项、徽标、状态圆点、按钮、形态开关胶囊、占位页  
-│       │   └── chat.css         对话页双列布局、会话列表侧栏、空状态、消息气泡、中断样式、输入区  
+│       │   ├── components.css   导航项、徽标、状态圆点、按钮、形态开关胶囊、模态确认弹窗、占位页  
+│       │   └── chat.css         对话页双列布局、会话列表侧栏、空状态、消息气泡、Markdown 排版、底部复制栏、输入区  
 │       └── js/  
 │           ├── main.js          启动入口：构建导航、初始化路由、装配视图  
 │           ├── routes.js        路由与导航的唯一配置源  
@@ -69,8 +69,9 @@ Lab1/
 │           ├── store.js         双形态状态管理：离线纯内存数据源与在线持久化数据源、会话级流状态映射  
 │           ├── api.js           RESTful API 客户端与会话级 SSE 订阅客户端  
 │           ├── dom.js           DOM 工具与时间戳格式化函数  
+│           ├── markdown.js      [第二版新增] 零依赖安全 DOM 级 Markdown 解析与纯文本提取工具  
 │           └── views/  
-│               ├── chat.js      对话工作区与会话列表视图控制器（形态切换、解耦流式订阅与重连）  
+│               ├── chat.js      对话工作区与会话列表视图控制器（形态切换、解耦流式订阅、Markdown 渲染、删除确认与一键复制）  
 │               └── placeholder.js 占位页视图  
 ├── data/                        [第二版新增] 本地持久化数据目录（受 .gitignore 忽略）  
 │   └── emibot.db                本地 SQLite 数据库文件  
@@ -133,7 +134,8 @@ FastAPI 服务端（Assistant/app.py）
 | `store.js`             | 双形态状态管理：离线纯内存数据源与在线持久化数据源、草稿维护、当前活动会话与会话级流状态映射（`streamingBySession`） | `dom.js`                         |
 | `api.js`               | RESTful API 客户端（会话与消息 CRUD、状态检查、中断请求）与会话级解耦 SSE 订阅客户端                                                  | 无                              |
 | `dom.js`               | `el()`、`createSvgIcon()`、`formatTimestamp()`、`scrollToBottom()`、`isNearBottom()`                                                                             | 无                              |
-| `views/chat.js`        | 对话页 DOM、会话列表渲染、新建/重命名/删除会话、形态切换响应、解耦流式订阅与重连、异常气泡渲染                           | `store.js`、`api.js`、`dom.js` |
+| `markdown.js`          | 安全 DOM 级 Markdown 解析器（`renderMarkdownToElement`）与纯文本提取（`stripMarkdownToPlainText`）                                                              | `dom.js`                         |
+| `views/chat.js`        | 对话页 DOM、会话列表渲染、新建/重命名/删除会话（含二次确认弹窗）、形态切换响应、解耦流式订阅与重连、在线 Agent Markdown 渲染、消息气泡底部一键复制、异常气泡渲染 | `store.js`、`api.js`、`dom.js`、`markdown.js`、`icons.js` |
 | `views/placeholder.js` | 占位页渲染                                                                                                                                                      | `routes.js`、`dom.js`           |
 | `icons.js`             | SVG symbol id 常量                                                                                                                                                 | 无                              |
 
@@ -280,6 +282,7 @@ FastAPI 服务端（Assistant/app.py）
 | 第二版 | 5      | `feature/storage-crud`          | 本地 SQLite 异步持久化层、会话 CRUD、顶栏形态切换器 UI、密钥预检与静默态数据流切换                                                                                                                                                                         | B1.1（B1_1_1、B1_1_2 及 B1_1_3 静默切换）、B1.7、B1.9 | 已完成 |
 | 第二版 | 6      | `feature/online-react-agent`    | 本机模型配置读取、OpenAI 兼容流式客户端（LLMClient）、ReAct 循环引擎、工具注册中心预留、多轮上下文构建与中文错误提示                                                                                                                         | B1.2、B1.3、B1.4、B1.5、B1.6                                | 已完成 |
 | 第二版 | 7      | `feature/generation-decoupling` | 后台解耦任务管理器（TaskManager）、`POST /api/sessions/{id}/messages` 异步生成触发、会话级订阅流 `GET /api/chat/stream`、任务中断 `POST /api/chat/abort`、生成中切换形态安全中断（`B1_1_3`）、停服崩溃状态恢复与多会话并发验收 | B1.8、B1.1（B1_1_3 生成中中断收尾）                   | 已完成 |
+| 第二版 | 8      | `feature/chat-ux-enhancements`  | 在线形态 Agent 回复安全 Markdown 实时渲染、删除会话自定义深色模态二次确认弹窗、双形态消息气泡底部纯文本一键复制按钮与反馈 | B1.10、B1.11、B1.12                                         | 已确认 |
 
 
 ---
@@ -634,7 +637,7 @@ errorMessage: null | string      // 后端根据 3.6 映射表返回的标准中
 
 - 核心数据处理与安全规定：
 - 会话标题生成规则：统一使用 `Array.from(rawContent.trim().replace(/\s+/g, ' ')).slice(0, 10).join('')`；先将换行符、制表符及连续空格折叠为单空格，再按 Unicode 码点切片，防止 emoji 等 UTF-16 代理对截断出现乱码。
-- XSS 防御规定：所有用户输入的标题与文本在注入 DOM 时，严禁使用 `innerHTML`，必须使用 `element.textContent` 或 `document.createTextNode` 渲染。
+- XSS 防御规定：所有用户输入的标题与文本在注入 DOM 时，严禁使用 `innerHTML`，必须使用 `element.textContent` 或 `document.createTextNode` 渲染；在线形态下 Agent 的 Markdown 渲染同样严禁直接拼接 `innerHTML`，统一由 `markdown.js` 将语法树安全构建为真实 DOM 节点（`el()` / `createTextNode`），任何内嵌 HTML/脚本标签均作为纯文本字面量展示，且链接仅放行 `http://` 与 `https://` 协议。
 - 草稿状态写入时机：统一在输入框 `input` 事件触发时实时写入当前活动目标（草稿态存入 `store.draftText`，已有会话存入对应 `sessionDrafts[id]`），会话切换与路由切离时直接复用，不维护分散的时机。
 -
 命名与格式规定：
@@ -961,5 +964,109 @@ status: Literal["running", "completed", "interrupted", "failed"]
 2. 用户在不同在线会话间切换、或切到其他路由导航再返回时，直接从前端内存读取对应会话的草稿文字恢复到文本框，调用 `adjustInputHeight()` 与 `syncSendButtonState()`；
 3. 再次在空白草稿态点击"新建对话"时，彻底清空丢弃 `draftText`（A6.11）；
 4. 既有会话已发出的消息不受影响，草稿仅在运行时内存留存，不发起数据库读写，确保零磁盘 I/O 延迟与高响应度。
+
+---
+
+##### B1.10 Markdown 渲染
+
+**B1_10_1 零依赖安全 DOM 级 Markdown 解析与纯文本提取工具（`markdown.js`）**
+
+- 状态：已确认
+- 需求描述：提供纯原生 ES Module 实现的 Markdown 解析与安全 DOM 构建器，支持常见 Markdown 排版语法，提供纯文本提取能力，并彻底杜绝内嵌脚本执行（XSS）。
+- 详细方案设计：
+  1. 新增 `Assistant/web/js/markdown.js`，仅依赖 `dom.js` 的 `el()` 工具，向外部导出两个核心函数：
+     - `renderMarkdownToElement(containerEl: HTMLElement, rawMarkdown: string): void`：将 Markdown 字符串解析并挂载为安全 DOM 树；
+     - `stripMarkdownToPlainText(rawMarkdown: string): string`：去除 Markdown 标记符号，返回还原后的纯文本字符串（供未挂载节点或纯文本复制兜底）。
+  2. 零 `innerHTML` 安全解析架构：
+     - 解析器采用两阶段状态机（块级解析 + 行内 Token 解析），所有文本内容一律通过 `document.createTextNode` 或 `el(tag, { text })` 写入 DOM，**严禁调用 `innerHTML`、`outerHTML` 或 `insertAdjacentHTML`**；模型输出中若包含 `<script>`、`<img onerror=...>` 等 HTML 标签，均原样作为普通文本字符安全显示，绝不触发浏览器 HTML 解析或脚本执行；
+     - 支持的块级（Block）语法：
+       - 围栏代码块（```` ```lang ... ``` ````）：渲染为 `<pre class="md-code-block"><code class="md-code-block__content" data-lang="lang">...</code></pre>`；流式输出期间若代码块尚未闭合（缺少尾部 ```` ``` ````），自动按未闭合代码块实时渲染；
+       - 标题（`#` ~ `######`）：渲染为 `<h1 class="md-heading">` ~ `<h6 class="md-heading">`；
+       - 无序列表（`- ` 或 `* ` 开头）与有序列表（`1. ` 开头）：连续列表项聚合渲染为 `<ul class="md-list"><li>...</li></ul>` 或 `<ol class="md-list"><li>...</li></ol>`；
+       - 引用块（`> ` 开头）：连续引用行聚合渲染为 `<blockquote class="md-quote">...</blockquote>`；
+       - 水平分割线（`---` 或 `***`）：渲染为 `<hr class="md-hr">`；
+       - 普通段落：渲染为 `<p class="md-p">...</p>`，段落内单换行转换为 `<br>`；
+     - 支持的行内（Inline）语法：
+       - 行内代码（`` `code` ``）：渲染为 `<code class="md-inline-code">...</code>`（内部不做粗斜体二次解析）；
+       - 粗体（`**text**`）与斜体（`*text*`）：分别渲染为 `<strong>` 与 `<em>`；
+       - 安全链接（`[label](url)`）：仅当 `url` 经修剪后匹配 `/^https?:\/\//i` 时渲染为 `<a class="md-link" href="..." target="_blank" rel="noopener noreferrer">label</a>`，其余协议（如 `javascript:`、`data:`）一律降级为纯文本字面量。
+
+**B1_10_2 在线形态 Agent 回复实时与历史 Markdown 渲染及双形态分流**
+
+- 状态：已确认
+- 需求描述：仅在线形态下的 Agent 回复按 Markdown 格式实时流式渲染与历史回显；用户消息以及离线形态下的所有消息均保持纯文本展示。
+- 详细方案设计：
+  1. 双形态与角色渲染分流（`Assistant/web/js/views/chat.js`）：
+     - 在 `createMessageNode(message)` 及流式增量更新回调中判定渲染模式：
+       - **启用 Markdown 渲染条件**：当且仅当 `getMode() === 'online' && message.role === 'assistant'`（且非无正文的纯错误卡片）；此时正文容器创建为 `<div class="msg__text msg__text--markdown"></div>`，调用 `renderMarkdownToElement(textEl, message.content)` 构建排版；
+       - **保持纯文本渲染条件**：当 `message.role === 'user'`（无论在线或离线）或 `getMode() === 'offline'`（包括离线 Agent 回复）时，正文容器保持为 `<p class="msg__text"></p>`，直接通过 `textEl.textContent = displayText` 赋值，保留 `white-space: pre-wrap` 纯文本换行展示；
+  2. 流式增量更新与打字机光标适配（`Assistant/web/css/chat.css`）：
+     - 在线流式订阅 `onDelta` 经 `requestAnimationFrame` 合并渲染时，若目标卡片为在线 Agent 消息，调用 `renderMarkdownToElement(textEl, msg.content)` 实时更新 DOM 子树；
+     - 在 `chat.css` 中定义 `.msg__text--markdown` 内部排版样式：消除首尾子元素多余外边距（`> :first-child { margin-top: 0; } > :last-child { margin-bottom: 0; }`），代码块 `.md-code-block` 使用 `--color-bg` 深色底、圆角边框与等宽字体横向滚动，行内代码 `.md-inline-code` 使用 `--color-surface-hover` 胶囊底色，引用块 `.md-quote` 左侧配 `3px solid var(--color-primary)` 竖线；
+     - 流式闪烁光标兼容：为 `.msg--agent.is-streaming .msg__text--markdown > :last-child::after` 挂载与纯文本一致的 `2px` 宽主色闪烁光标。
+
+---
+
+##### B1.11 删除会话二次确认
+
+**B1_11_1 自定义深色模态确认弹窗与会话删除拦截流转**
+
+- 状态：已确认
+- 需求描述：在离线与在线形态下，点击会话列表中的删除入口时弹出与工作台深色风格一致的自定义确认弹窗，用户点击确认“删除”后才执行删除，点击“取消”或关闭弹窗则保留原会话。
+- 详细方案设计：
+  1. 模态弹窗 DOM 结构（`Assistant/web/index.html`）：
+     - 在 `<body>` 底部新增确认弹窗骨架（默认带有 `hidden` 属性）：
+       ```html
+       <div class="modal-backdrop" id="delete-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title" aria-describedby="delete-modal-desc" hidden>
+         <div class="modal">
+           <h3 class="modal__title" id="delete-modal-title">删除对话</h3>
+           <p class="modal__desc" id="delete-modal-desc">确定要删除该对话吗？删除后其中的全部消息将无法恢复。</p>
+           <div class="modal__actions">
+             <button class="modal__btn modal__btn--cancel" id="delete-modal-cancel" type="button">取消</button>
+             <button class="modal__btn modal__btn--danger" id="delete-modal-confirm" type="button">删除</button>
+           </div>
+         </div>
+       </div>
+       ```
+  2. 深色视觉样式（`Assistant/web/css/components.css`）：
+     - `.modal-backdrop`：`position: fixed; inset: 0; z-index: 1000; background-color: rgba(0, 0, 0, 0.62); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center;`，并规定 `.modal-backdrop[hidden] { display: none !important; }`；
+     - `.modal`：宽度 `min(380px, calc(100vw - 32px))`，背景 `--color-surface`，边框 `1px solid var(--color-border-strong)`，圆角 `var(--radius-md)`，内边距 `20px 24px`，配轻微弹出入场过渡；
+     - `.modal__btn--cancel` 采用透明/深色次级边框按钮样式；`.modal__btn--danger` 采用 `--color-danger`（`#ef4444`）红色背景配白色文字，悬停高亮，明确警示危险操作。
+  3. 拦截与确认状态机（`Assistant/web/js/views/chat.js`）：
+     - 维护模块级状态 `let pendingDeleteSessionId = null;`；
+     - 当用户在离线或在线会话列表中点击垃圾桶删除按钮（`.session-item__action-btn[data-action="delete"]`）时：
+       - 调用 `event.stopPropagation()`，不再直接删除，而是调用 `openDeleteConfirmModal(session.id)`；
+       - `openDeleteConfirmModal(sessionId)` 将 `pendingDeleteSessionId` 设为 `sessionId`，读取该会话标题动态更新 `#delete-modal-desc` 文案为 `确定要删除对话“${session.title}”吗？删除后该对话的全部消息将无法恢复。`（使用 `textContent` 防 XSS），将 `#delete-confirm-modal` 的 `hidden` 置为 `false`，并将键盘焦点移至 `#delete-modal-cancel` 按钮；
+     - 取消与关闭分支：
+       - 点击 `#delete-modal-cancel` 按钮、点击 `.modal-backdrop` 遮罩空白处（`event.target === modalBackdropEl`）或在弹窗打开期间按下键盘 `Escape` 键时，调用 `closeDeleteConfirmModal()`：将 `pendingDeleteSessionId` 重置为 `null`，设置 `modalBackdropEl.hidden = true`，原会话及其消息不做任何改动；
+     - 确认删除分支：
+       - 点击 `#delete-modal-confirm` 红色“删除”按钮时：取出 `targetId = pendingDeleteSessionId`，立即调用 `closeDeleteConfirmModal()` 关闭弹窗，随后调用 `await handleDeleteSession(targetId)` 执行既有删除逻辑（流式中止、队列清理、在线 `DELETE /api/sessions/{id}` 持久化清除、内存移除及当前会话落回空白草稿态）。
+
+---
+
+##### B1.12 消息一键复制
+
+**B1_12_1 消息气泡底部元信息栏、纯文本提取与一键复制反馈**
+
+- 状态：已确认
+- 需求描述：在离线与在线形态下，每条用户消息与 Agent 回复气泡下方（与时间戳同行的底部区域）均提供一键复制按钮；点击后将该条消息渲染后的纯文本复制到剪贴板，并展示短暂“已复制”反馈；流式生成中的消息在完成前不显示复制按钮。
+- 详细方案设计：
+  1. 新增矢量图标定义（`Assistant/web/index.html` 与 `Assistant/web/js/icons.js`）：
+     - 在 `index.html` 的 `<svg class="app-svg-sprite">` 中新增两个 symbol：
+       - `icon-copy`：双层圆角矩形复制图标；
+       - `icon-check`：勾选对号图标；
+     - 在 `Assistant/web/js/icons.js` 的 `ICONS` 中新增 `COPY: 'icon-copy'` 与 `CHECK: 'icon-check'`。
+  2. 消息底部 DOM 结构与流式显隐控制（`Assistant/web/js/views/chat.js` 与 `Assistant/web/css/chat.css`）：
+     - 在 `createMessageNode(message)` 中，将气泡下方的 `<time class="msg__time">` 升级为弹性同行容器 `<div class="msg__meta">`：
+       - 子节点 1：`<time class="msg__time" datetime="...">YYYY-MM-DD HH:mm</time>`；
+       - 子节点 2：`<button class="msg__copy-btn" type="button" aria-label="复制消息内容" title="复制">`（内部通过 `createSvgIcon(ICONS.COPY, 'msg__copy-icon')` 挂载图标，并附带 `<span class="msg__copy-label">复制</span>`）；
+     - 对齐与流式控制：
+       - `.msg__meta` 设置为 `display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; padding: 0 4px;`，`.msg--user .msg__meta` 跟随用户气泡靠右对齐，`.msg--agent .msg__meta` 靠左对齐；
+       - 当消息处于流式生成中（`.msg.is-streaming`）时，通过 CSS `.msg.is-streaming .msg__copy-btn { display: none; }` 隐藏复制按钮；当流式结束移除 `.is-streaming` 类后，复制按钮自动展现。
+  3. 纯文本复制与短暂“已复制”视觉反馈：
+     - 点击 `.msg__copy-btn` 时，执行 `handleCopyMessage(articleEl, message, copyBtnEl)`：
+       - **纯文本获取规则**：优先查找当前气泡内的 `.msg__text` 节点；若该节点为 Markdown 渲染容器（`.msg__text--markdown`），读取 `textEl.innerText.trim()`（直接获得浏览器排版后的纯文本，不含 `**`、`#`、```` ``` ```` 等 Markdown 标记符号，若节点未挂载则调用 `stripMarkdownToPlainText(message.content)`）；若为普通纯文本节点（用户消息或离线消息），读取 `textEl.textContent`（或 `message.content`）；
+       - **剪贴板写入**：优先调用 `await navigator.clipboard.writeText(plainText)`；若在非安全上下文或权限受限时自动回退至隐藏 `<textarea>` + `document.execCommand('copy')` 方案；
+       - **视觉反馈状态机**：复制成功后，为 `copyBtnEl` 添加 `.is-copied` 类（配色变为成功绿/主色高亮），内部 `<use>` 图标引用切换为 `#icon-check`，`.msg__copy-label` 文本更新为 `"已复制"`；在按钮实例上记录定时器 ID，延时 `1500ms` 后自动移除 `.is-copied`、恢复 `#icon-copy` 图标与 `"复制"` 文案（若 1500ms 内再次点击则先 `clearTimeout` 再重新计时）。
 
  
