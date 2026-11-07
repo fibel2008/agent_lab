@@ -13,6 +13,7 @@ import {
   subscribeChatStream,
 } from '../api.js';
 import { createSvgIcon, el, formatTimestamp, isNearBottom, scrollToBottom } from '../dom.js';
+import { renderMarkdownToElement, stripMarkdownToPlainText } from '../markdown.js';
 import {
   abortStreaming,
   addAgentPlaceholder,
@@ -769,7 +770,21 @@ function createMessageNode(message) {
     bubble.appendChild(waiting);
   }
 
-  if (isError && message.content && message.errorMessage) {
+  const shouldRenderMarkdown = getMode() === 'online' && !isUser && !(isError && !message.content);
+
+  if (shouldRenderMarkdown) {
+    const textEl = el('div', { className: 'msg__text msg__text--markdown' });
+    renderMarkdownToElement(textEl, message.content || '');
+    bubble.appendChild(textEl);
+
+    if (isError && message.errorMessage) {
+      const tip = el('div', {
+        className: 'msg__error-tip',
+        text: message.errorMessage,
+      });
+      bubble.appendChild(tip);
+    }
+  } else if (isError && message.content && message.errorMessage) {
     const text = el('p', {
       className: 'msg__text',
       text: message.content,
@@ -975,9 +990,12 @@ function subscribeOnlineSession(sessionId, messageId) {
         if (cardNode) {
           const waitingEl = cardNode.querySelector('.msg__waiting');
           if (waitingEl) waitingEl.remove();
-          const textEl = cardNode.querySelector('.msg__text');
+          let textEl = cardNode.querySelector('.msg__text');
           if (textEl) {
-            textEl.textContent = msg ? msg.content : text;
+            if (!textEl.classList.contains('msg__text--markdown')) {
+              textEl.classList.add('msg__text--markdown');
+            }
+            renderMarkdownToElement(textEl, msg ? msg.content : text);
           }
           if (shouldAutoScroll && chatScrollEl) {
             scrollToBottom(chatScrollEl);
@@ -1036,7 +1054,12 @@ function subscribeOnlineSession(sessionId, messageId) {
           const msg = findMessageInSession(sessionId, messageId);
 
           if (msg && msg.content) {
-            if (textEl) textEl.textContent = msg.content;
+            if (textEl) {
+              if (!textEl.classList.contains('msg__text--markdown')) {
+                textEl.classList.add('msg__text--markdown');
+              }
+              renderMarkdownToElement(textEl, msg.content);
+            }
             if (bubble) {
               let tipEl = bubble.querySelector('.msg__error-tip');
               if (!tipEl) {
