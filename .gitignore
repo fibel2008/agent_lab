@@ -20,8 +20,9 @@ data/
 *.db
 *.sqlite3
 
-# 临时规格文件
+# 临时规格与暂缓待办文件
 spec_temp.md
+TODO.md
 
 # 阶段归档目录
 Archive/
