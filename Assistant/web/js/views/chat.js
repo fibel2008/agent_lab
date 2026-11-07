@@ -78,6 +78,13 @@ let chatBannerEl = null;
 let chatBannerTextEl = null;
 let chatBannerCloseEl = null;
 
+// 删除会话二次确认弹窗元素 (B1.11)
+let pendingDeleteSessionId = null;
+let deleteConfirmModalEl = null;
+let deleteModalDescEl = null;
+let deleteModalCancelEl = null;
+let deleteModalConfirmEl = null;
+
 let isComposing = false;
 let shouldAutoScroll = true;
 let editingSessionId = null;
@@ -105,6 +112,42 @@ export function initChatView() {
   chatBannerEl = document.getElementById('chat-banner');
   chatBannerTextEl = document.getElementById('chat-banner-text');
   chatBannerCloseEl = document.getElementById('chat-banner-close');
+
+  deleteConfirmModalEl = document.getElementById('delete-confirm-modal');
+  deleteModalDescEl = document.getElementById('delete-modal-desc');
+  deleteModalCancelEl = document.getElementById('delete-modal-cancel');
+  deleteModalConfirmEl = document.getElementById('delete-modal-confirm');
+
+  if (deleteModalCancelEl) {
+    deleteModalCancelEl.addEventListener('click', () => {
+      closeDeleteConfirmModal();
+    });
+  }
+
+  if (deleteConfirmModalEl) {
+    deleteConfirmModalEl.addEventListener('click', (event) => {
+      if (event.target === deleteConfirmModalEl) {
+        closeDeleteConfirmModal();
+      }
+    });
+  }
+
+  if (deleteModalConfirmEl) {
+    deleteModalConfirmEl.addEventListener('click', async () => {
+      const targetId = pendingDeleteSessionId;
+      closeDeleteConfirmModal();
+      if (targetId) {
+        await handleDeleteSession(targetId);
+      }
+    });
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && deleteConfirmModalEl && !deleteConfirmModalEl.hidden) {
+      event.preventDefault();
+      closeDeleteConfirmModal();
+    }
+  });
 
   if (!composerInputEl || !composerFormEl) {
     return;
@@ -495,10 +538,10 @@ function renderSessionList() {
       startRenameSession(session.id, li, titleSpan, actionsDiv);
     });
 
-    // 删除入口
+    // 删除入口：打开二次确认弹窗 (B1.11)
     deleteBtn.addEventListener('click', (event) => {
       event.stopPropagation();
-      handleDeleteSession(session.id);
+      openDeleteConfirmModal(session.id);
     });
 
     fragment.appendChild(li);
@@ -598,6 +641,32 @@ function startRenameSession(sessionId, itemEl, titleSpan, actionsDiv) {
   itemEl.appendChild(input);
   input.focus();
   input.select();
+}
+
+// 删除会话二次确认弹窗控制 (B1.11)
+function openDeleteConfirmModal(sessionId) {
+  const session = findSession(sessionId);
+  pendingDeleteSessionId = sessionId;
+
+  if (deleteModalDescEl) {
+    const sessionTitle = session ? session.title : '';
+    deleteModalDescEl.textContent = `确定要删除对话“${sessionTitle}”吗？删除后该对话的全部消息将无法恢复。`;
+  }
+
+  if (deleteConfirmModalEl) {
+    deleteConfirmModalEl.hidden = false;
+  }
+
+  if (deleteModalCancelEl) {
+    deleteModalCancelEl.focus();
+  }
+}
+
+function closeDeleteConfirmModal() {
+  pendingDeleteSessionId = null;
+  if (deleteConfirmModalEl) {
+    deleteConfirmModalEl.hidden = true;
+  }
 }
 
 // 删除会话
