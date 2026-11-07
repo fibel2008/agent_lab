@@ -13,6 +13,8 @@ import {
   subscribeChatStream,
 } from '../api.js';
 import { createSvgIcon, el, formatTimestamp, isNearBottom, scrollToBottom } from '../dom.js';
+import { ICONS } from '../icons.js';
+import { renderMarkdownToElement, stripMarkdownToPlainText } from '../markdown.js';
 import {
   abortStreaming,
   addAgentPlaceholder,
@@ -77,6 +79,13 @@ let chatBannerEl = null;
 let chatBannerTextEl = null;
 let chatBannerCloseEl = null;
 
+// 删除会话二次确认弹窗元素 (B1.11)
+let pendingDeleteSessionId = null;
+let deleteConfirmModalEl = null;
+let deleteModalDescEl = null;
+let deleteModalCancelEl = null;
+let deleteModalConfirmEl = null;
+
 let isComposing = false;
 let shouldAutoScroll = true;
 let editingSessionId = null;
@@ -104,6 +113,42 @@ export function initChatView() {
   chatBannerEl = document.getElementById('chat-banner');
   chatBannerTextEl = document.getElementById('chat-banner-text');
   chatBannerCloseEl = document.getElementById('chat-banner-close');
+
+  deleteConfirmModalEl = document.getElementById('delete-confirm-modal');
+  deleteModalDescEl = document.getElementById('delete-modal-desc');
+  deleteModalCancelEl = document.getElementById('delete-modal-cancel');
+  deleteModalConfirmEl = document.getElementById('delete-modal-confirm');
+
+  if (deleteModalCancelEl) {
+    deleteModalCancelEl.addEventListener('click', () => {
+      closeDeleteConfirmModal();
+    });
+  }
+
+  if (deleteConfirmModalEl) {
+    deleteConfirmModalEl.addEventListener('click', (event) => {
+      if (event.target === deleteConfirmModalEl) {
+        closeDeleteConfirmModal();
+      }
+    });
+  }
+
+  if (deleteModalConfirmEl) {
+    deleteModalConfirmEl.addEventListener('click', async () => {
+      const targetId = pendingDeleteSessionId;
+      closeDeleteConfirmModal();
+      if (targetId) {
+        await handleDeleteSession(targetId);
+      }
+    });
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && deleteConfirmModalEl && !deleteConfirmModalEl.hidden) {
+      event.preventDefault();
+      closeDeleteConfirmModal();
+    }
+  });
 
   if (!composerInputEl || !composerFormEl) {
     return;
@@ -494,10 +539,10 @@ function renderSessionList() {
       startRenameSession(session.id, li, titleSpan, actionsDiv);
     });
 
-    // 删除入口
+    // 删除入口：打开二次确认弹窗 (B1.11)
     deleteBtn.addEventListener('click', (event) => {
       event.stopPropagation();
-      handleDeleteSession(session.id);
+      openDeleteConfirmModal(session.id);
     });
 
     fragment.appendChild(li);
@@ -597,6 +642,32 @@ function startRenameSession(sessionId, itemEl, titleSpan, actionsDiv) {
   itemEl.appendChild(input);
   input.focus();
   input.select();
+}
+
+// 删除会话二次确认弹窗控制 (B1.11)
+function openDeleteConfirmModal(sessionId) {
+  const session = findSession(sessionId);
+  pendingDeleteSessionId = sessionId;
+
+  if (deleteModalDescEl) {
+    const sessionTitle = session ? session.title : '';
+    deleteModalDescEl.textContent = `确定要删除对话“${sessionTitle}”吗？删除后该对话的全部消息将无法恢复。`;
+  }
+
+  if (deleteConfirmModalEl) {
+    deleteConfirmModalEl.hidden = false;
+  }
+
+  if (deleteModalCancelEl) {
+    deleteModalCancelEl.focus();
+  }
+}
+
+function closeDeleteConfirmModal() {
+  pendingDeleteSessionId = null;
+  if (deleteConfirmModalEl) {
+    deleteConfirmModalEl.hidden = true;
+  }
 }
 
 // 删除会话
@@ -769,7 +840,21 @@ function createMessageNode(message) {
     bubble.appendChild(waiting);
   }
 
-  if (isError && message.content && message.errorMessage) {
+  const shouldRenderMarkdown = getMode() === 'online' && !isUser && !(isError && !message.content);
+
+  if (shouldRenderMarkdown) {
+    const textEl = el('div', { className: 'msg__text msg__text--markdown' });
+    renderMarkdownToElement(textEl, message.content || '');
+    bubble.appendChild(textEl);
+
+    if (isError && message.errorMessage) {
+      const tip = el('div', {
+        className: 'msg__error-tip',
+        text: message.errorMessage,
+      });
+      bubble.appendChild(tip);
+    }
+  } else if (isError && message.content && message.errorMessage) {
     const text = el('p', {
       className: 'msg__text',
       text: message.content,
@@ -807,9 +892,112 @@ function createMessageNode(message) {
     },
   });
 
+  // 一键复制按钮 (B1.12)
+  const copyBtn = el(
+    'button',
+    {
+      className: 'msg__copy-btn',
+      attrs: {
+        type: 'button',
+        'aria-label': '复制消息内容',
+        title: '复制',
+      },
+    },
+    [
+      createSvgIcon(ICONS.COPY, 'msg__copy-icon'),
+      el('span', { className: 'msg__copy-label', text: '复制' }),
+    ],
+  );
+
+  copyBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    handleCopyMessage(article, message, copyBtn);
+  });
+
+  const metaEl = el('div', { className: 'msg__meta' }, [time, copyBtn]);
+
   article.appendChild(bubble);
-  article.appendChild(time);
+  article.appendChild(metaEl);
   return article;
+}
+
+// 消息一键复制与反馈 (B1.12)
+async function handleCopyMessage(articleEl, message, copyBtnEl) {
+  let plainText = '';
+  const textEl = articleEl.querySelector('.msg__text');
+
+  if (textEl && textEl.classList.contains('msg__text--markdown')) {
+    if (textEl.isConnected && typeof textEl.innerText === 'string' && textEl.innerText.trim().length > 0) {
+      plainText = textEl.innerText.trim();
+    } else {
+      plainText = stripMarkdownToPlainText(message.content || '');
+    }
+  } else if (textEl) {
+    plainText = textEl.textContent || '';
+  } else {
+    plainText = message.content || '';
+  }
+
+  if (!plainText && message.errorMessage) {
+    plainText = message.errorMessage;
+  }
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(plainText);
+    } else {
+      copyUsingTextareaFallback(plainText);
+    }
+  } catch (err) {
+    try {
+      copyUsingTextareaFallback(plainText);
+    } catch (fallbackErr) {
+      return;
+    }
+  }
+
+  // 短暂“已复制”视觉反馈
+  copyBtnEl.classList.add('is-copied');
+  const useEl = copyBtnEl.querySelector('use');
+  if (useEl) {
+    useEl.setAttribute('href', `#${ICONS.CHECK}`);
+  }
+  const labelEl = copyBtnEl.querySelector('.msg__copy-label');
+  if (labelEl) {
+    labelEl.textContent = '已复制';
+  }
+
+  if (copyBtnEl._copyTimer) {
+    clearTimeout(copyBtnEl._copyTimer);
+  }
+
+  copyBtnEl._copyTimer = setTimeout(() => {
+    copyBtnEl.classList.remove('is-copied');
+    if (useEl) {
+      useEl.setAttribute('href', `#${ICONS.COPY}`);
+    }
+    if (labelEl) {
+      labelEl.textContent = '复制';
+    }
+    copyBtnEl._copyTimer = null;
+  }, 1500);
+}
+
+function copyUsingTextareaFallback(text) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.top = '0';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  try {
+    document.execCommand('copy');
+  } finally {
+    textarea.remove();
+  }
 }
 
 async function handleSubmit() {
@@ -975,9 +1163,12 @@ function subscribeOnlineSession(sessionId, messageId) {
         if (cardNode) {
           const waitingEl = cardNode.querySelector('.msg__waiting');
           if (waitingEl) waitingEl.remove();
-          const textEl = cardNode.querySelector('.msg__text');
+          let textEl = cardNode.querySelector('.msg__text');
           if (textEl) {
-            textEl.textContent = msg ? msg.content : text;
+            if (!textEl.classList.contains('msg__text--markdown')) {
+              textEl.classList.add('msg__text--markdown');
+            }
+            renderMarkdownToElement(textEl, msg ? msg.content : text);
           }
           if (shouldAutoScroll && chatScrollEl) {
             scrollToBottom(chatScrollEl);
@@ -1036,7 +1227,12 @@ function subscribeOnlineSession(sessionId, messageId) {
           const msg = findMessageInSession(sessionId, messageId);
 
           if (msg && msg.content) {
-            if (textEl) textEl.textContent = msg.content;
+            if (textEl) {
+              if (!textEl.classList.contains('msg__text--markdown')) {
+                textEl.classList.add('msg__text--markdown');
+              }
+              renderMarkdownToElement(textEl, msg.content);
+            }
             if (bubble) {
               let tipEl = bubble.querySelector('.msg__error-tip');
               if (!tipEl) {

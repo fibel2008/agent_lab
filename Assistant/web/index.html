@@ -61,6 +61,13 @@
     <symbol id="icon-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
       <polyline points="9 18 15 12 9 6"></polyline>
     </symbol>
+    <symbol id="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+    </symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="20 6 9 17 4 12"></polyline>
+    </symbol>
   </svg>
 
   <a class="skip-link" href="#main-content">跳到主内容</a>
@@ -164,6 +171,19 @@
   </div>
 
   <div class="sr-only" id="live-status" role="status" aria-live="polite"></div>
+
+  <!-- 删除会话二次确认弹窗 (B1.11) -->
+  <div class="modal-backdrop" id="delete-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title" aria-describedby="delete-modal-desc" hidden>
+    <div class="modal">
+      <h3 class="modal__title" id="delete-modal-title">删除对话</h3>
+      <p class="modal__desc" id="delete-modal-desc">确定要删除该对话吗？删除后其中的全部消息将无法恢复。</p>
+      <div class="modal__actions">
+        <button class="modal__btn modal__btn--cancel" id="delete-modal-cancel" type="button">取消</button>
+        <button class="modal__btn modal__btn--danger" id="delete-modal-confirm" type="button">删除</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="/js/main.js"></script>
 </body>
 </html>

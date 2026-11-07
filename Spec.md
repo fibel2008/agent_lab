@@ -282,7 +282,7 @@ FastAPI 服务端（Assistant/app.py）
 | 第二版 | 5      | `feature/storage-crud`          | 本地 SQLite 异步持久化层、会话 CRUD、顶栏形态切换器 UI、密钥预检与静默态数据流切换                                                                                                                                                                         | B1.1（B1_1_1、B1_1_2 及 B1_1_3 静默切换）、B1.7、B1.9 | 已完成 |
 | 第二版 | 6      | `feature/online-react-agent`    | 本机模型配置读取、OpenAI 兼容流式客户端（LLMClient）、ReAct 循环引擎、工具注册中心预留、多轮上下文构建与中文错误提示                                                                                                                         | B1.2、B1.3、B1.4、B1.5、B1.6                                | 已完成 |
 | 第二版 | 7      | `feature/generation-decoupling` | 后台解耦任务管理器（TaskManager）、`POST /api/sessions/{id}/messages` 异步生成触发、会话级订阅流 `GET /api/chat/stream`、任务中断 `POST /api/chat/abort`、生成中切换形态安全中断（`B1_1_3`）、停服崩溃状态恢复与多会话并发验收 | B1.8、B1.1（B1_1_3 生成中中断收尾）                   | 已完成 |
-| 第二版 | 8      | `feature/chat-ux-enhancements`  | 在线形态 Agent 回复安全 Markdown 实时渲染、删除会话自定义深色模态二次确认弹窗、双形态消息气泡底部纯文本一键复制按钮与反馈 | B1.10、B1.11、B1.12                                         | 已确认 |
+| 第二版 | 8      | `feature/chat-ux-enhancements`  | 在线形态 Agent 回复安全 Markdown 实时渲染、删除会话自定义深色模态二次确认弹窗、双形态消息气泡底部纯文本一键复制按钮与反馈 | B1.10、B1.11、B1.12                                         | 已完成 |
 
 
 ---
