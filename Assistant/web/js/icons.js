@@ -13,4 +13,6 @@ export const ICONS = Object.freeze({
   TRASH: 'icon-trash',
   CHEVRON_LEFT: 'icon-chevron-left',
   CHEVRON_RIGHT: 'icon-chevron-right',
+  COPY: 'icon-copy',
+  CHECK: 'icon-check',
 });

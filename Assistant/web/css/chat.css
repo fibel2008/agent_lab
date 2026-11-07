@@ -400,15 +400,73 @@
   word-break: break-word;
 }
 
+/* 消息气泡底部元信息栏与一键复制 (B1.12) */
+.msg__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 0 4px;
+}
+
+.msg--user .msg__meta {
+  align-self: flex-end;
+}
+
+.msg--agent .msg__meta,
+.msg--assistant .msg__meta {
+  align-self: flex-start;
+}
+
 /* 时间戳 */
 .msg__time {
   font-size: 11px;
   color: var(--color-text-muted);
-  margin-top: 6px;
-  padding: 0 4px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
   user-select: none;
+}
+
+/* 一键复制按钮 */
+.msg__copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  transition: color var(--motion-fast), background-color var(--motion-fast);
+  line-height: 1;
+  user-select: none;
+}
+
+.msg__copy-btn:hover {
+  color: var(--color-text);
+  background-color: var(--color-surface-hover);
+}
+
+.msg__copy-btn.is-copied {
+  color: var(--color-success);
+}
+
+.msg__copy-icon {
+  width: 12px;
+  height: 12px;
+  color: currentColor;
+  flex-shrink: 0;
+}
+
+.msg__copy-label {
+  font-size: 11px;
+}
+
+/* 流式生成中隐藏复制按钮 */
+.msg.is-streaming .msg__copy-btn {
+  display: none !important;
 }
 
 /* Agent 生成等待三点动画 */

@@ -13,6 +13,7 @@ import {
   subscribeChatStream,
 } from '../api.js';
 import { createSvgIcon, el, formatTimestamp, isNearBottom, scrollToBottom } from '../dom.js';
+import { ICONS } from '../icons.js';
 import { renderMarkdownToElement, stripMarkdownToPlainText } from '../markdown.js';
 import {
   abortStreaming,
@@ -891,9 +892,112 @@ function createMessageNode(message) {
     },
   });
 
+  // 一键复制按钮 (B1.12)
+  const copyBtn = el(
+    'button',
+    {
+      className: 'msg__copy-btn',
+      attrs: {
+        type: 'button',
+        'aria-label': '复制消息内容',
+        title: '复制',
+      },
+    },
+    [
+      createSvgIcon(ICONS.COPY, 'msg__copy-icon'),
+      el('span', { className: 'msg__copy-label', text: '复制' }),
+    ],
+  );
+
+  copyBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    handleCopyMessage(article, message, copyBtn);
+  });
+
+  const metaEl = el('div', { className: 'msg__meta' }, [time, copyBtn]);
+
   article.appendChild(bubble);
-  article.appendChild(time);
+  article.appendChild(metaEl);
   return article;
+}
+
+// 消息一键复制与反馈 (B1.12)
+async function handleCopyMessage(articleEl, message, copyBtnEl) {
+  let plainText = '';
+  const textEl = articleEl.querySelector('.msg__text');
+
+  if (textEl && textEl.classList.contains('msg__text--markdown')) {
+    if (textEl.isConnected && typeof textEl.innerText === 'string' && textEl.innerText.trim().length > 0) {
+      plainText = textEl.innerText.trim();
+    } else {
+      plainText = stripMarkdownToPlainText(message.content || '');
+    }
+  } else if (textEl) {
+    plainText = textEl.textContent || '';
+  } else {
+    plainText = message.content || '';
+  }
+
+  if (!plainText && message.errorMessage) {
+    plainText = message.errorMessage;
+  }
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(plainText);
+    } else {
+      copyUsingTextareaFallback(plainText);
+    }
+  } catch (err) {
+    try {
+      copyUsingTextareaFallback(plainText);
+    } catch (fallbackErr) {
+      return;
+    }
+  }
+
+  // 短暂“已复制”视觉反馈
+  copyBtnEl.classList.add('is-copied');
+  const useEl = copyBtnEl.querySelector('use');
+  if (useEl) {
+    useEl.setAttribute('href', `#${ICONS.CHECK}`);
+  }
+  const labelEl = copyBtnEl.querySelector('.msg__copy-label');
+  if (labelEl) {
+    labelEl.textContent = '已复制';
+  }
+
+  if (copyBtnEl._copyTimer) {
+    clearTimeout(copyBtnEl._copyTimer);
+  }
+
+  copyBtnEl._copyTimer = setTimeout(() => {
+    copyBtnEl.classList.remove('is-copied');
+    if (useEl) {
+      useEl.setAttribute('href', `#${ICONS.COPY}`);
+    }
+    if (labelEl) {
+      labelEl.textContent = '复制';
+    }
+    copyBtnEl._copyTimer = null;
+  }, 1500);
+}
+
+function copyUsingTextareaFallback(text) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.top = '0';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  try {
+    document.execCommand('copy');
+  } finally {
+    textarea.remove();
+  }
 }
 
 async function handleSubmit() {
