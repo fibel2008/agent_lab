@@ -1,0 +1,2 @@
+Fake Docx File: This file is actually plain text renamed to .docx extension.
+It lacks zip package headers, so python-docx / zipfile parser will fail and catch BadZipFile.
