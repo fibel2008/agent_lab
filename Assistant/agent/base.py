@@ -14,6 +14,7 @@ class AttachmentInfo(BaseModel):
     file_type: str
     file_size: int
     is_image: bool = False
+    storage_path: Optional[str] = None
 
 
 class ChatMessage(BaseModel):

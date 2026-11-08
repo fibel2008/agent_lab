@@ -170,6 +170,7 @@ class SessionStore:
                     "filename": att["filename"],
                     "file_type": att["file_type"],
                     "file_size": att["file_size"],
+                    "storage_path": str(att["storage_path"]) if att["storage_path"] else None,
                     "is_image": is_img,
                 })
 

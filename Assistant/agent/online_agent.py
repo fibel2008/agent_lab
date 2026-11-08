@@ -1,7 +1,10 @@
 """在线 ReAct Agent 实现与多轮上下文构建模块。"""
 
+import base64
 from collections.abc import AsyncIterator, Callable, Sequence
 import logging
+import mimetypes
+from pathlib import Path
 from typing import Any, Optional
 
 from Assistant import config
@@ -68,6 +71,7 @@ async def build_context_messages(
                 file_type=att["file_type"],
                 file_size=att["file_size"],
                 is_image=att.get("is_image", False),
+                storage_path=str(att["storage_path"]) if att.get("storage_path") else None,
             )
             for att in attachments_raw
         ]
@@ -102,6 +106,53 @@ async def build_context_messages(
         alternating.pop(0)
 
     return alternating
+
+
+def build_payload_messages(
+    messages: Sequence[ChatMessage],
+    system_prompt: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """将内部 ChatMessage 消息列表转换为符合 OpenAI API 标准格式的 payload_messages。
+
+    对于包含 is_image=True 的附件的用户消息，读取图片二进制并转为 Base64 编码，
+    组合为 OpenAI 多模态 content 格式；若无图片附件，保持纯文本字符串 content。
+    """
+    payload_messages: list[dict[str, Any]] = []
+    if system_prompt:
+        payload_messages.append({"role": "system", "content": system_prompt})
+
+    for msg in messages:
+        if msg.role != "user":
+            payload_messages.append({"role": msg.role, "content": msg.content})
+            continue
+
+        image_attachments = [att for att in msg.attachments if att.is_image]
+        if not image_attachments:
+            payload_messages.append({"role": msg.role, "content": msg.content})
+            continue
+
+        # 包含图片附件的多模态消息结构构建
+        content_parts: list[dict[str, Any]] = [{"type": "text", "text": msg.content}]
+        for att in image_attachments:
+            if att.storage_path:
+                img_path = Path(att.storage_path)
+                if img_path.is_file():
+                    mime, _ = mimetypes.guess_type(str(img_path))
+                    if not mime:
+                        mime = "image/png"
+                    b64 = base64.b64encode(img_path.read_bytes()).decode("utf-8")
+                    content_parts.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime};base64,{b64}"},
+                    })
+                else:
+                    logger.warning("多模态图片附件物理文件不存在: %s", att.storage_path)
+            else:
+                logger.warning("多模态图片附件缺少 storage_path: id=%s", att.id)
+
+        payload_messages.append({"role": "user", "content": content_parts})
+
+    return payload_messages
 
 
 class OnlineAgent:
