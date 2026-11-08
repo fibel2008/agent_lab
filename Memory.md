@@ -10,13 +10,13 @@
 
 ## 1. 项目快照
 
-- **当前版本**：第二版（B1.0 在线对话与首个工具 `read_attachment`）
-- **已完成范围**：A1.1–A1.9、A2.1–A2.7、A2.9、A3.2–A3.3、A4.1、A6.1–A6.11、B1.1–B1.12（A2.8、A3.1 已废弃）
-- **进行中**：`feature/attachments-and-tools`（B1.13–B1.15，待验收）
-- **下一个**：`feature/attachments-and-tools` 验收通过后合并回 `main`，随后进入第三版 C1.0 个人数据库工作台（分支名待 Spec 规划）
+- **当前版本**：第二版（B1.0 在线对话：B1.1–B1.15 全部完成并已归档至 Archive/vB_0_intent.md, Archive/vB_0_spec.md）
+- **已完成范围**：A1.1–A1.9、A2.1–A2.7、A2.9、A3.2–A3.3、A4.1、A6.1–A6.11、B1.1–B1.15（A2.8、A3.1 已废弃）
+- **进行中**：第二版已验收归档完毕，准备进入第三版（C1.0 个人数据库工作台）
+- **下一个**：将 `feature/attachments-and-tools` 合并回 `main` 并推送远端，随后进入第三版 C1.0 个人数据库工作台（分支名待 Spec 规划）
 - **当前分支**：`feature/attachments-and-tools`
 - **最近一次合并的分支**：`feature/chat-ux-enhancements`
-- **指针**：各版本的设计与理由见 Spec.md 对应章节。
+- **指针**：各版本的设计与理由见 Spec.md 对应章节，历史详细规格见 Archive/ 归档文档。
 
 
 | 分支                          | 覆盖需求                           | 状态    | 已合并 main |
@@ -29,7 +29,7 @@
 | `feature/online-react-agent`    | B1.2–B1.6                            | 已验收 | 是            |
 | `feature/generation-decoupling` | B1.8、B1.1（生成中切换中断） | 已验收 | 是            |
 | `feature/chat-ux-enhancements`  | B1.10–B1.12                          | 已验收 | 是            |
-| `feature/attachments-and-tools` | B1.13–B1.15                          | 待验收 | 否            |
+| `feature/attachments-and-tools` | B1.13–B1.15                          | 已验收 | 否            |
 
 
 ## 2. 工作约定（W）
