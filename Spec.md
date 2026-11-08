@@ -61,24 +61,26 @@ Lab1/
 │   │   ├── task_manager.py      [第二版新增] 后台解耦生成任务管理器（支持多会话并发与广播）  
 │   │   └── factory.py           唯一替换点：选哪个 Agent  
 │   └── web/  
-│       ├── index.html           应用外壳 + 内联 SVG 图标库（顶栏新增交互式形态切换器、通用深色模态提示与确认弹窗）  
+│       ├── index.html           应用外壳 + 内联 SVG 图标库（顶栏含形态切换器、个人数据库视图切换栏与全局搜索框，底部含通用深色模态弹窗与轻提示 Toast）  
 │       ├── css/  
 │       │   ├── tokens.css       设计令牌（颜色、圆角、间距、字号、布局、形态与中断状态）  
 │       │   ├── base.css         reset、排版、滚动条、可访问性基础  
 │       │   ├── layout.css       顶栏、主侧栏（含缩略态）、内容区、响应式断点  
-│       │   ├── components.css   导航项、徽标、状态圆点、按钮、形态开关胶囊、模态提示与确认弹窗、占位页  
-│       │   └── chat.css         对话页双列布局、会话列表侧栏、空状态、待发送附件栏、气泡附件卡片、图片缩略图、工具执行胶囊、Markdown 排版、底部复制栏、输入区  
+│       │   ├── components.css   导航项、徽标、状态圆点、按钮、形态开关胶囊、模态提示与确认弹窗、轻提示 Toast、占位页  
+│       │   ├── chat.css         对话页双列布局、会话列表侧栏、空状态、待发送附件栏、气泡附件卡片、图片缩略图、工具执行胶囊、Markdown 排版、底部复制栏、输入区  
+│       │   └── database.css     [第三版 C1.0 新增] 个人数据库工作台样式：顶栏视图切换栏、右侧全局搜索框与分组下拉浮层、可收起列表栏、详情编辑器、溯源高亮卡片与预留扩展区  
 │       └── js/  
 │           ├── main.js          启动入口：构建导航、初始化路由、装配视图  
 │           ├── routes.js        路由与导航的唯一配置源  
-│           ├── icons.js         SVG symbol 的 id 常量（新增回形针、文件类型与工具动效图标）  
-│           ├── router.js        hash 路由解析、主侧栏折叠切换与视图显隐  
-│           ├── store.js         双形态状态管理：离线纯内存数据源与在线持久化数据源、待发送附件池、会话级流状态映射  
+│           ├── icons.js         SVG symbol 的 id 常量（新增回形针、文件类型、搜索与工具动效图标）  
+│           ├── router.js        hash 路由解析、主侧栏折叠切换、顶栏数据库专属控件显隐与视图切换  
+│           ├── store.js         双形态状态管理與个人数据库工作台状态管理（资料、切片、对话归档、检索与草稿脏状态）  
 │           ├── api.js           RESTful API 客户端（包含附件打开与预览）与会话级 SSE 订阅客户端  
 │           ├── dom.js           DOM 工具与时间戳格式化函数  
 │           ├── markdown.js      [第二版新增] 零依赖安全 DOM 级 Markdown 解析与纯文本提取工具  
 │           └── views/  
 │               ├── chat.js      对话工作区与会话列表视图控制器（形态切换、附件添加/校验/移除/打开、模型视觉拦截、ReAct 工具过程展示、解耦流式订阅、Markdown 渲染、删除确认与一键复制）  
+│               ├── database.js  [第三版 C1.0 新增] 个人数据库工作台视图控制器（顶栏视图切换与全局搜索、可收起列表栏、资料导入切分、双向联动编辑保存、未保存拦截、删除确认与溯源跳转）  
 │               └── placeholder.js 占位页视图  
 ├── data/                        [第二版新增] 本地持久化数据目录（受 .gitignore 忽略）  
 │   ├── emibot.db                本地 SQLite 数据库文件  
@@ -108,7 +110,7 @@ Lab1/
 
 ```
 浏览器端（原生 ES Modules）  
-├── 顶栏形态切换器（离线 ⇄ 在线）  
+├── 顶栏形态切换器（离线 ⇄ 在线）与个人数据库顶栏扩展区（左侧视图切换 Tab 栏 + 右侧全局搜索框）  
 ├── 对话工作区（views/chat.js）  
 │   ├── 待发送附件池与多源输入（store.js：按钮选择、拖拽进输入区、Ctrl+V 粘贴/截图）  
 │   ├── 离线数据流：内存 store.js ── POST /api/chat（直连 MockAgent 同步 SSE 直出，文字反馈附件接收）  
@@ -118,6 +120,10 @@ Lab1/
 │       ├── 触发生成：POST /api/sessions/{session_id}/messages ── 发送时模型视觉探测与拦截、202 异步任务  
 │       ├── 解耦订阅：GET /api/chat/stream?session_id={id} ── 接收 SSE delta 增量与 tool_start/tool_done 过程  
 │       └── 任务中断：POST /api/chat/abort ── 中断指定会话正在进行的任务  
+├── 个人数据库工作区（views/database.js，[第三版 C1.0 新增]）  
+│   ├── 顶栏联动：左侧「资料 / 切片 / 对话归档 / 未来视图」Tab 切换 + 右侧全局跨源检索浮层（Ctrl+K、IME 保护）  
+│   ├── 左侧可收起条目列表栏：支持资料导入切分、来源筛选胶囊、会话分组折叠、底部收起与 72px 主导航底部展开  
+│   └── 右侧详情与溯源面板：解析文本/切片/归档消息自适应编辑、未保存脏状态守卫、资料⇄切片双向联动保存、上下文高亮溯源与跨视图跳转  
 FastAPI 服务端（Assistant/app.py）  
 ├── 静态托管与配置检查：/api/config/status（安全探测密钥配置状态）  
 ├── 异步持久化仓储层（storage/，基于 aiosqlite）：  
@@ -141,12 +147,13 @@ FastAPI 服务端（Assistant/app.py）
 |------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------|
 | `main.js`              | 入口：构建导航、初始化路由、注册全局事件、装配双形态                                                                                       | 其余全部前端模块         |
 | `routes.js`            | 路由、导航标签、图标、页面标题、占位页文案的唯一配置源                                                                                    | `icons.js`                       |
-| `router.js`            | 解析 hash、主侧栏折叠切换、切换视图、更新导航高亮与 `document.title`                                                                          | `routes.js`                      |
-| `store.js`             | 双形态状态管理：离线纯内存数据源与在线持久化数据源、草稿维护、当前活动会话与会话级流状态映射（`streamingBySession`） | `dom.js`                         |
+| `router.js`            | 解析 hash、主侧栏折叠切换、顶栏数据库专属控件显隐、切换视图、更新导航高亮与 `document.title`                                                                          | `routes.js`                      |
+| `store.js`             | 双形态状态管理（离线纯内存与在线持久化数据源、草稿维护、流状态映射）与个人数据库工作台状态管理（资料、切片、对话归档、检索与编辑脏状态） | `dom.js`                         |
 | `api.js`               | RESTful API 客户端（会话与消息 CRUD、状态检查、中断请求）与会话级解耦 SSE 订阅客户端                                                  | 无                              |
 | `dom.js`               | `el()`、`createSvgIcon()`、`formatTimestamp()`、`scrollToBottom()`、`isNearBottom()`                                                                             | 无                              |
 | `markdown.js`          | 安全 DOM 级 Markdown 解析器（`renderMarkdownToElement`）与纯文本提取（`stripMarkdownToPlainText`）                                                              | `dom.js`                         |
 | `views/chat.js`        | 对话页 DOM、会话列表渲染、新建/重命名/删除会话（含二次确认弹窗）、形态切换响应、解耦流式订阅与重连、在线 Agent Markdown 渲染、消息气泡底部一键复制、异常气泡渲染 | `store.js`、`api.js`、`dom.js`、`markdown.js`、`icons.js` |
+| `views/database.js`    | 个人数据库工作台 DOM、顶栏视图切换与全局搜索下拉、可收起条目列表栏、本地文件导入与切分、资料与切片双向联动编辑保存、历史归档消息编辑与删除、未保存离开拦截与溯源跳转 | `store.js`、`dom.js`、`icons.js`（C2.0 起扩展依赖 `api.js`） |
 | `views/placeholder.js` | 占位页渲染                                                                                                                                                      | `routes.js`、`dom.js`           |
 | `icons.js`             | SVG symbol id 常量                                                                                                                                                 | 无                              |
 
@@ -300,6 +307,7 @@ FastAPI 服务端（Assistant/app.py）
 | 第二版 | 7      | `feature/generation-decoupling` | 后台解耦任务管理器（TaskManager）、`POST /api/sessions/{id}/messages` 异步生成触发、会话级订阅流 `GET /api/chat/stream`、任务中断 `POST /api/chat/abort`、生成中切换形态安全中断（`B1_1_3`）、停服崩溃状态恢复与多会话并发验收 | B1.8、B1.1（B1_1_3 生成中中断收尾）                   | 已完成 |
 | 第二版 | 8      | `feature/chat-ux-enhancements`  | 在线形态 Agent 回复安全 Markdown 实时渲染、删除会话自定义深色模态二次确认弹窗、双形态消息气泡底部纯文本一键复制按钮与反馈 | B1.10、B1.11、B1.12                                         | 已完成 |
 | 第二版 | 9      | `feature/attachments-and-tools` | 对话多源附件添加（按钮/拖拽/粘贴）、格式与大小拦截、附件持久化与级联清理、Windows 默认应用调起、图片模型视觉校验拦截、首个工具 read_attachment 接入与 ReAct 过程展示 | B1.13、B1.14、B1.15                                         | 未开始 |
+| 第三版 | 10     | `feature/database-workbench-ui` | 个人数据库工作台前端页面启用、顶栏左侧视图切换栏与右侧全局搜索框嵌入（含 IME 保护与快捷键）、左侧主导航缩略与可收起条目列表栏、资料/切片/对话归档三视图浏览、资料导入切分、资料与切片双向联动编辑保存、对话归档消息修改与删除、未保存离开拦截、删除二次确认与溯源高亮跳转 | C1.1、C1.2、C1.3                                            | 未开始 |
 
 
 ---
@@ -728,6 +736,32 @@ status: 'done' | 'streaming' | 'error' | 'interrupted',
 errorCode: null | string,        // 关联的系统错误码  
 errorMessage: null | string,     // 后端根据 3.6 映射表返回的标准中文错误提示  
 attachments: []                  // 附件列表：[{ id, filename, fileType, fileSize, isImage }]  
+}
+```
+
+- 前端个人数据库工作台状态管理（`store.js` 中的 `dbState`，C1.0 阶段）：
+
+```js
+{
+  activeView: 'chunks',            // 当前激活分类视图：'docs'（资料） | 'chunks'（切片） | 'chats'（对话归档）
+  selectedIds: {                   // 各视图当前选中的条目 ID（无选中时为 null）
+    docs: 'd1',
+    chunks: 'c11',
+    chats: 'm1'
+  },
+  filterDocId: null,               // 切片视图下的来源资料过滤 ID（为 null 表示显示全部切片）
+  searchQuery: '',                 // 顶栏右侧全局搜索框当前查询词
+  foldedSessions: {},              // 对话归档视图中已折叠的会话字典：{ [sessionId]: boolean }
+  draftText: null,                 // 右侧详情编辑器当前未保存草稿（null 表示未发生编辑或与原文一致）
+  isSidebarCollapsed: false,       // 个人数据库左侧条目列表栏是否处于收起状态
+  docs: [                          // 资料列表：[{ id, name, time, text }]
+    { id: 'd1', name: 'Python 入门笔记.pdf', time: '昨天导入', text: '...' },
+    { id: 'd2', name: 'agent_notes.docx', time: '3 天前导入', text: '...' }
+  ],
+  chunks: [                        // 分段切片列表：[{ id, docId, paraIndex, text }]（由 docs 按双换行切分派生并与之双向同步）
+  ],
+  archivedSessions: [              // 对话归档列表：[{ id, title, msgs: [{ id, role, text, time }] }]
+  ]
 }
 ```
 
@@ -1348,3 +1382,220 @@ status: Literal["running", "completed", "interrupted", "failed"]
   3. 离线形态 Mock 阶段文字反馈：
      - 离线形态下，若请求中包含 `pendingAttachments`，`MockAgent` 不调用工具、不读写本地文件；
      - 后端提取附件数量与文件名列表，组装确定性中文回复：`已收到 ${count} 个文件：${fileNames.join('、')}。当前处于离线模式，不执行附件解析与工具调用。`，通过既有 SSE 直出流向前端推送，直观验证双形态一致的附件收发交互。
+
+---
+
+### C 第三版
+
+#### C1.0 个人数据库工作台前端页面
+
+##### C1.1 个人数据库页面启用与整体布局
+
+**C1_1_1 路由激活、主侧栏自动缩略与双形态无差别访问**
+
+- 状态：已确认
+- 需求描述：启用左侧主导航中的“个人数据库”（`#/database`）工作台视图，移除第一版占位页；进入该页面时主导航栏自动收缩为 `72px` 图标栏；无论顶栏当前处于离线模式还是在线模式，均可正常进入与操作个人数据库工作台。
+- 详细方案设计：
+  1. 路由配置升级（`Assistant/web/js/routes.js`）：
+     - 将 `#/database` 路由项的 `view` 字段由 `'placeholder'` 修改为 `'database'`；
+  2. 视图容器与主侧栏缩略联动（`Assistant/web/index.html` 与 `Assistant/web/js/router.js`）：
+     - 在 `index.html` 的 `.app-main` 内新增 `<section class="view view--database" id="view-database" aria-label="个人数据库工作台" hidden></section>`；
+     - 在 `router.js` 的 `syncRoute()` 中判定：
+       - `const isChat = route.view === 'chat';`
+       - `const isDatabase = route.view === 'database';`
+       - `const isCompactSidebar = isChat || isDatabase;`
+       - 主导航栏 `.app-sidebar` 在 `isCompactSidebar` 为 `true` 时挂载 `.app-sidebar--collapsed`（收为 `72px` 仅显示图标的缩略态，移动端 `< 768px` 为 `64px`）；
+       - 控制三个视图容器互斥显隐：`viewChatEl.hidden = !isChat`、`viewDatabaseEl.hidden = !isDatabase`、`viewPlaceholderEl.hidden = (isChat || isDatabase)`；
+  3. 双形态无差别访问保障：
+     - 顶栏 `.mode-toggle` 切换离线/在线模式时，仅切换对话工作区（`#/chat`）的数据源与流式行为；
+     - 若用户当前处于 `#/database` 页面并在顶栏点击切换离线/在线模式，个人数据库视图的状态、选中项与数据保持不变，不阻断、不重置，满足“无论处于离线或在线模式均可正常使用个人数据库工作台”的规定。
+
+**C1_1_2 顶栏融合架构：左侧视图切换栏与右侧全局搜索框（含 IME 保护与快捷键）**
+
+- 状态：已确认
+- 需求描述：进入个人数据库页面时，在全局顶栏左侧（`Emibot |` 右侧）嵌入分类视图切换栏（`资料 / 切片 / 对话归档 / 未来视图`），替代单纯页面标题文字；在顶栏右侧嵌入全局搜索框（移除冗余的“个人数据库 / 切片”路径面包屑），支持跨资料、切片、对话实时检索下拉预览、快捷键聚焦及中文输入法（IME）无损输入。
+- 详细方案设计：
+  1. 全局顶栏 DOM 结构扩展（`Assistant/web/index.html` 与 `Assistant/web/css/database.css`）：
+     - 在 `.app-header` 中：
+       - 紧随 `.app-header__divider` 与 `#page-title` 之后挂载个人数据库专属视图切换栏（默认 `hidden`）：
+         ```html
+         <nav class="db-header-tabs" id="db-header-tabs" aria-label="个人数据库视图切换" hidden>
+           <button class="db-header-tabs__btn" type="button" data-db-view="docs">资料</button>
+           <button class="db-header-tabs__btn is-active" type="button" data-db-view="chunks">切片</button>
+           <button class="db-header-tabs__btn" type="button" data-db-view="chats">对话归档</button>
+           <span class="db-header-tabs__placeholder" aria-disabled="true">未来视图</span>
+         </nav>
+         ```
+       - 在 `.app-header__spacer` 右侧、`.mode-toggle` 左侧挂载个人数据库全局搜索组件（默认 `hidden`）：
+         ```html
+         <div class="db-search" id="db-header-search" hidden>
+           <div class="db-search__input-wrap">
+             <svg class="db-search__icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-search"></use></svg>
+             <input
+               class="db-search__input"
+               id="db-search-input"
+               type="search"
+               placeholder="搜索资料、切片、对话 (Ctrl+K)"
+               autocomplete="off"
+               aria-label="搜索资料、切片、对话"
+             >
+           </div>
+           <div class="db-search__dropdown" id="db-search-dropdown" role="listbox" hidden></div>
+         </div>
+         ```
+     - 路由显隐联动：当路由进入 `#/database` 时，`pageTitleEl.hidden = true`，`dbHeaderTabsEl.hidden = false`，`dbHeaderSearchEl.hidden = false`（顶栏左侧呈现 `Emibot | 资料 / 切片 / 对话归档 / 未来视图`，右侧呈现全局搜索框）；当路由切往其他页面时，恢复 `pageTitleEl.hidden = false`，并将 `dbHeaderTabsEl` 与 `dbHeaderSearchEl` 置为 `hidden`（同时清空下拉浮层）。
+  2. 顶栏视觉与 AstrBot 深色风格适配（`database.css`）：
+     - `.db-header-tabs` 采用紧凑水平排列（`display: inline-flex; align-items: center; gap: 4px;`）；
+     - `.db-header-tabs__btn`：高度 `32px`，内边距 `0 12px`，圆角 `var(--radius-sm)`，字号 `var(--text-base)`，默认文字颜色 `var(--color-text-secondary)`，悬停背景 `var(--color-surface-hover)`；激活态 `.is-active` 使用 `background-color: var(--color-primary-soft); color: var(--color-primary); font-weight: 500;`；
+     - `.db-header-tabs__placeholder`（`未来视图`）：高度 `30px`，内边距 `0 10px`，采用 `1px dashed var(--color-border-strong)` 虚线边框，文字颜色 `var(--color-text-dim)`，字号 `var(--text-sm)`，`cursor: default; user-select: none;`，预留未来视图扩展心智；
+     - `.db-search`：宽度 `clamp(200px, 26vw, 340px)`，输入框背景 `var(--color-bg)`，边框 `1px solid var(--color-border)`，聚焦时 `border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--color-primary-softer);`。
+  3. 根治原型输入框中文输入 Bug 与实时下拉检索逻辑（`views/database.js`）：
+     - **缺陷根因修复**：原型在每次 `oninput` 时重写整个 `#app.innerHTML`，导致 `<input>` 节点在敲击每个字母时被销毁重建，直接打断中文拼音输入法（IME）组合状态并造成失焦或只能输入异常字符。本设计中 `#db-search-input` 作为常驻 DOM 节点挂载在 `.app-header` 内，**在任何检索或视图重绘过程中绝不销毁或替换该 `<input>` 节点**；
+     - **IME 组合态保护**：监听 `#db-search-input` 的 `compositionstart`（设置 `isComposing = true`）与 `compositionend`（设置 `isComposing = false` 并立即执行一次检索渲染）；在 `input` 事件中若 `isComposing === true` 则直接返回，待拼音选词上屏后再更新检索结果；
+     - **分组检索与安全 DOM 渲染**：
+       - 将 `query = inputEl.value.trim().toLowerCase()` 存入 `dbState.searchQuery`；若 `query === ''`，将 `#db-search-dropdown` 置为 `hidden`；
+       - 若 `query` 非空，按三组依次匹配（忽略大小写子串匹配）：
+         ① `资料`：匹配 `doc.name` 或 `doc.text`，渲染条目显示 `doc.name`；
+         ② `切片`：匹配 `chunk.text`，渲染条目显示前 40 个字符预览；
+         ③ `对话`：遍历 `archivedSessions` 匹配 `msg.text`，渲染条目显示 `{session.title}：{msg.text 前 30 字符}`；
+       - 使用 `dom.js` 的 `el()` 与 `textContent` 构建 `.db-search__group-title` 与 `.db-search__item`（严禁 `innerHTML`）；若三组均无命中，渲染空提示 `.db-search__empty`：`没有找到“${rawQuery}”相关内容。换个关键词试试。`；
+     - **点击跳转与快捷键**：
+       - 点击下拉结果项时，调用未保存修改守卫 `guardUnsavedChanges(() => { ... })`：切换到目标视图（`docs` / `chunks` / `chats`）、清除 `filterDocId = null`、选中目标条目 ID、清空搜索框并关闭下拉浮层；
+       - 全局监听 `Ctrl+K` / `Cmd+K`（当处于 `#/database` 路由时阻止默认行为并调用 `dbSearchInputEl.focus()` 与 `select()`）；按 `Escape` 键或点击 `.db-search` 外部区域时关闭下拉浮层。
+
+**C1_1_3 双栏工作区骨架与条目列表栏收起/展开交互（对齐对话页）**
+
+- 状态：已确认
+- 需求描述：个人数据库主体区采用与对话页一致的“左侧可收起条目列表栏 + 右侧详情编辑与溯源面板”双栏布局；列表栏底部设“收起列表”按钮，收起后展开按钮显示在 `72px` 主导航栏最底部，且在窗口宽度 `< 1024px` 时自动收起。
+- 详细方案设计：
+  1. 双栏工作区 DOM 结构（`views/database.js` 与 `database.css`）：
+     - `#view-database` 设置为 `max-width: 100%; padding: 0; margin: 0; height: 100%; display: flex; flex-direction: row; overflow: hidden;`（与 `.view--chat` 完全对齐）；
+     - 左侧条目列表栏 `<aside class="db-sidebar" id="db-sidebar" aria-label="数据库条目列表">`：
+       - 宽度 `var(--layout-session-width)`（`240px`，或桌面端 `260px`），背景 `var(--color-surface)`，右侧边框 `1px solid var(--color-border-sidebar)`；
+       - 内部由三部分构成：顶部栏 `.db-sidebar__header`（显示当前分类名称与操作按钮）、中部滚动列表区 `.db-sidebar__list`（`flex: 1; overflow-y: auto;`）、底部收起操作区 `.db-sidebar__footer`（内含 `#collapse-db-btn`“收起列表”按钮）；
+     - 右侧详情主区域 `<div class="db-main" id="db-main">`：
+       - `flex: 1; min-width: 0; height: 100%; overflow-y: auto; background-color: var(--color-bg);`；
+       - 内部详情容器 `.db-detail` 最大宽度 `860px`，内边距 `var(--space-6) clamp(16px, 4vw, 44px)`，在滚动视口内居中或自然展开。
+  2. 列表栏收起/展开与主侧栏底部按钮复用机制：
+     - 当点击 `.db-sidebar__footer` 中的“收起列表”按钮时：
+       - 将 `dbState.isSidebarCollapsed` 置为 `true`，为 `#db-sidebar` 添加 `.is-collapsed` 类（`width: 0 !important; opacity: 0; pointer-events: none; border-right-width: 0;`）；
+       - 显示主侧栏最底部的 `#expand-sessions-btn` 按钮，并将其 `title` 与 `aria-label` 动态更新为 `"展开列表"`；
+     - 当在 `#/database` 路由下点击主侧栏底部的 `#expand-sessions-btn` 时：
+       - 将 `dbState.isSidebarCollapsed` 置为 `false`，移除 `#db-sidebar` 的 `.is-collapsed` 类，并隐藏 `#expand-sessions-btn`；
+     - 响应式自适应：监听窗口尺寸变化（`< 1024px` 平板/小屏断点），进入小屏时自动将列表栏收起，释放右侧详情编辑空间；切换到 `#/mail`、`#/device`、`#/settings` 等非双栏路由时自动隐藏 `#expand-sessions-btn`。
+
+---
+
+##### C1.2 资料与切片可视化增删改查界面
+
+**C1_2_1 资料与切片列表渲染、本地文件导入切分与来源筛选胶囊**
+
+- 状态：已确认
+- 需求描述：在左侧列表栏支持“资料”与“切片”视图渲染；“资料”视图顶部提供“导入资料”按钮支持选择本地文件并自动切分段落生成切片；“切片”视图支持按来源资料筛选并展示可一键清除的筛选胶囊。
+- 详细方案设计：
+  1. 列表栏头部与导入入口（`views/database.js`）：
+     - `.db-sidebar__header` 左侧显示当前视图名称（`资料` / `切片` / `对话归档`），右侧在 `activeView === 'docs'` 时挂载 `<button class="db-btn db-btn--sm" id="db-import-btn" type="button">导入资料</button>`，关联隐藏的 `<input type="file" id="db-file-input" multiple hidden accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.py,.json,.js,.ts,.html,.css,.java,.c,.cpp,.go,.sh,.yaml,.sql">`；
+  2. 本地文件导入与自动段落切分（C1.0 前端状态机）：
+     - 用户选择本地文件后，遍历文件列表：
+       - 创建新资料条目 `{ id: 'd' + nextId++, name: file.name, time: '刚刚导入', text: '解析中…' }` 插入 `dbState.docs` 头部，自动切至 `docs` 视图并选中该资料；
+       - 若为纯文本/代码类文件（`.txt`, `.md`, `.py`, `.json`, `.js`, `.ts`, `.html`, `.css`, `.java`, `.c`, `.cpp`, `.go`, `.sh`, `.yaml`, `.sql`），使用 `FileReader.readAsText(file, 'utf-8')` 读取真实文件内容；
+       - 若为二进制文档类（`.pdf`, `.docx`, `.xlsx`, `.pptx`），在 C1.0 纯前端阶段生成结构化演示解析文本（C2.2 阶段对接后端解析器落盘）；
+       - 解析完成后更新 `doc.text`，调用 `splitTextToParagraphs(doc.text)`（按 `/\n\n+/` 拆分并过滤空白段）为每段生成 `{ id: 'c' + nextId++, docId: doc.id, paraIndex: i, text: para }` 写入 `dbState.chunks`，弹出轻提示 Toast：`已导入 ${file.name}`；
+  3. 列表条目与筛选胶囊渲染：
+     - **资料列表项（`docs`）**：主标题加粗单行省略显示 `doc.name`，副标题显示 `${chunkCount} 个切片，${doc.time}`；无资料时渲染空状态：`还没有资料。导入一份文件，开始建立你的个人数据库。`；
+     - **切片列表项（`chunks`）**：
+       - 若 `dbState.filterDocId` 非空，在列表顶部渲染可点击的筛选胶囊 `<button class="db-filter-chip" type="button">来自：${docName} ×</button>`，点击后将 `filterDocId` 重置为 `null` 并刷新列表；
+       - 每个切片项主标题单行省略显示 `chunk.text`，副标题显示 `来自 ${doc ? doc.name : '已删除资料'}`；无切片时渲染空状态：`这里还没有切片。`；
+     - 当前选中项挂载 `.is-active` 高亮样式（主色左边框或柔和主色底 `var(--color-primary-soft)`）。
+
+**C1_2_2 详情编辑器、精准未保存脏状态守卫（Dirty Guard）与双向联动保存**
+
+- 状态：已确认
+- 需求描述：右侧详情面板提供自适应高度文本编辑器、未保存状态指示与保存/删除按钮；仅当文本实际发生改动时触发“未保存”标记与离开拦截弹窗；保存“资料”或“切片”时自动执行双向联动更新。
+- 详细方案设计：
+  1. 详情面板头部与编辑器（`views/database.js` 与 `database.css`）：
+     - 头部 `.db-detail__header`：左侧 `<h2>` 显示标题（资料视图为 `doc.name`，切片视图为 `切片`，对话归档视图为 `${msg.role}消息`）；右侧操作组包含状态标签 `<span class="db-detail__status" id="db-dirty-status"></span>`、主按钮 `<button class="db-btn db-btn--primary" id="db-save-btn" type="button">保存</button>` 与危险按钮 `<button class="db-btn db-btn--danger" id="db-delete-btn" type="button">删除</button>`；
+     - 编辑器区：小标题提示（`解析文本，可直接编辑` / `切片内容，可直接编辑` / `消息内容，可直接编辑`），下方挂载 `<textarea class="db-editor" id="db-editor"></textarea>`；
+     - 自适应高度：在填充初始内容及 `input` 事件中执行 `editorEl.style.height = 'auto'; editorEl.style.height = (editorEl.scrollHeight + 2) + 'px';`，且在用户输入期间**绝不重建 `<textarea>` 节点**；
+  2. 精准脏状态判定与未保存离开拦截（修复原型误拦 Bug）：
+     - 判定函数 `isDirty()`：当且仅当 `dbState.draftText !== null && currentItem && dbState.draftText !== currentItem.text` 时为 `true`；若用户修改后又将文字改回与原文完全一致，自动将 `dbState.draftText` 置回 `null` 并隐藏“未保存”提示；
+     - 守卫函数 `guardUnsavedChanges(actionFn)`：当用户在 `isDirty()` 为 `true` 时尝试切换左侧列表条目、切换顶栏视图 Tab、点击搜索结果跳转或点击溯源链接跳转时，弹出深色确认模态框：
+       - 标题：`放弃未保存的修改？`
+       - 描述：`当前内容还没有保存，离开后修改会丢失。`
+       - 按钮：`取消`（留在当前编辑页）与红色 `放弃修改`（清空 `draftText = null` 并执行 `actionFn()`）；
+  3. 资料与切片双向联动保存机制（修复原型数据脱节 Bug）：
+     - 监听点击“保存”按钮或键盘 `Ctrl+S` / `Cmd+S`（阻止浏览器默认保存网页行为）：
+       - 若 `!isDirty()`，弹出轻提示 Toast：`没有需要保存的修改`；
+       - **当在“资料”（`docs`）视图保存时**：
+         ① 将 `doc.text` 更新为 `dbState.draftText`；
+         ② **正向联动重切分**：调用 `splitTextToParagraphs(doc.text)` 获取最新段落数组 `newParas`；基于 `doc.id` 重建该资料在 `dbState.chunks` 中的切片序列（同 `paraIndex` 优先复用原有切片 `id` 以保持选中态稳定，新增段落分配新 `id`，多余旧段落移除）；
+       - **当在“切片”（`chunks`）视图保存时**：
+         ① 将 `chunk.text` 更新为 `dbState.draftText.trim()`；
+         ② **反向联动回写原资料**：查找所属原资料 `doc = findDoc(chunk.docId)`；若存在，将 `doc.text` 按段落拆开，把第 `chunk.paraIndex` 段替换为修改后的 `chunk.text`（若修改后的切片自身包含双换行，则同步重排该资料的段落与切片索引），再用 `\n\n` 拼接写回 `doc.text`；
+         ③ 保存完成后立即重绘右侧详情底部的“溯源”卡片，使溯源高亮段落即时反映最新修改的内容，彻底消除原型中修改切片后溯源区仍显示旧文本或报错“原文已修改，无法定位这个切片”的逻辑漏洞；
+       - 重置 `dbState.draftText = null`，弹出轻提示 Toast：`已保存`。
+
+**C1_2_3 溯源上下文高亮预览、跨视图双向跳转与删除二次确认**
+
+- 状态：已确认
+- 需求描述：在资料详情展示切片统计与“查看这些切片”跳转入口；在切片详情展示来源资料名称、前后文段落与当前段落高亮，并提供“打开原资料”跳转入口；删除资料或切片时弹出深色二次确认模态框。
+- 详细方案设计：
+  1. 资料详情底部切片关联卡片：
+     - 在编辑器下方渲染 `.db-source-card`：`已切成 ${n} 个切片。` 搭配动作链接 `<button class="db-link" type="button" data-action="view-doc-chunks">查看这些切片</button>`；
+     - 点击“查看这些切片”（经 `guardUnsavedChanges` 校验后）：切换顶栏视图至 `'chunks'`，设置 `dbState.filterDocId = doc.id`，并将选中项设为该资料的第一个切片。
+  2. 切片详情底部溯源上下文卡片：
+     - 小标题 `溯源`，内部渲染 `.db-source-card`：
+       - 若原资料已被删除：显示提示 `原资料已被删除，无法定位原文。`；
+       - 若原资料存在且段落可定位：
+         ① 顶部显示加粗文件名与段落号：`${doc.name}，第 ${chunk.paraIndex + 1} 段`；
+         ② 摘录上下文段落 `[paraIndex - 1, paraIndex, paraIndex + 1]` 中存在的段落，每段渲染为 `<p class="db-source__para">`，其中当前切片对应的 `paraIndex` 段落内部包裹 `<mark class="db-source__mark">`（采用深色主题友好的暖金/主色半透明高亮底色，文字清晰可读）；
+         ③ 底部提供动作链接 `<button class="db-link" type="button" data-action="open-source-doc">打开原资料</button>`，点击后（经 `guardUnsavedChanges` 校验）切换顶栏视图至 `'docs'` 并选中 `doc.id`。
+  3. 预留扩展区与删除二次确认弹窗：
+     - 三个视图的详情面板最底部均渲染虚线预留卡片 `.db-future-slot`：`预留扩展区：标签、关联、备注等后续功能可以挂在这里`；
+     - 点击详情头部“删除”按钮时，调用通用深色确认弹窗：
+       - **删除资料**：标题 `删除这份资料？`，文案 `资料及其 ${n} 个切片都会被删除，无法恢复。`；确认后从 `dbState.docs` 移除该资料，同时从 `dbState.chunks` 级联移除所有 `docId === doc.id` 的切片（若 `filterDocId === doc.id` 则重置为 `null`），选中相邻资料或 `null`，弹出 Toast `已删除`；
+       - **删除切片**：标题 `删除这个切片？`，文案 `这个切片会被删除，原资料不受影响。`；确认后从 `dbState.chunks` 移除该切片，选中相邻切片或 `null`，弹出 Toast `已删除`。
+
+---
+
+##### C1.3 在线历史消息直接修改与删除界面
+
+**C1_3_1 对话归档按会话折叠列表与所属会话上下文联动面板**
+
+- 状态：已确认
+- 需求描述：在个人数据库“对话归档”视图中，左侧列表按会话分组并支持点击会话标题折叠/展开消息列表；右侧详情面板展示选中消息的编辑器以及“所属会话”完整消息上下文列表，支持在上下文列表中直接点击切换选中消息。
+- 详细方案设计：
+  1. 左侧会话分组折叠列表（`views/database.js`）：
+     - 当 `activeView === 'chats'` 时，遍历 `dbState.archivedSessions`：
+       - 若 `archivedSessions` 为空，渲染空状态：`暂无已保存的在线对话。`；
+       - 对每个会话渲染分组头部 `<button class="db-group-header" type="button" data-session-id="${session.id}">`，显示折叠指示符（折叠时 `▸ `，展开时 `▾ `）与 `session.title`；点击头部切换 `dbState.foldedSessions[session.id]` 布尔值并局部重绘列表；
+       - 当会话处于展开态时，依次渲染该会话下的消息行 `.db-list-item`：主标题加粗单行省略显示 `${msg.role}：${msg.text}`，副标题显示消息时间 `msg.time`；
+  2. 右侧消息详情与所属会话上下文列表：
+     - **空指针防护（修复原型崩溃 Bug）**：查询当前选中消息 `findMessageWithSession(dbState.selectedIds.chats)`；若未找到（例如列表为空或选中 ID 失效），安全回退渲染右侧空状态 `从左侧选择一项查看详情。`，杜绝原型中直接访问 `[0].s` 引发的未捕获空指针异常；
+     - 若命中选中消息 `{ msg, session }`：
+       - 详情头部标题显示 `${msg.role}消息`（如 `用户消息` 或 `Agent消息`），右侧配“未保存”指示、“保存”与“删除”按钮；
+       - 第一分区（`消息内容，可直接编辑`）：挂载自适应高度 `<textarea class="db-editor">`，绑定 `msg.text`；
+       - 第二分区（`所属会话：${session.title}`）：在 `.db-session-context` 容器中按顺序渲染该会话的全部消息卡片 `.db-session-msg`（显示 `${m.role}：${m.text}`），当前选中的消息挂载 `.is-active` 高亮样式；点击同会话内的其他消息卡片时，经过 `guardUnsavedChanges` 校验后直接将 `dbState.selectedIds.chats` 切换至该消息并刷新详情面板；
+       - 第三分区：挂载 `.db-future-slot` 预留扩展区。
+
+**C1_3_2 历史消息内容编辑保存、单条删除二次确认与空会话自动清理**
+
+- 状态：已确认
+- 需求描述：在个人数据库“对话归档”详情面板中支持修改单条历史消息并保存，支持二次确认后删除单条历史消息（会话内消息删空时自动移除该空会话）；对话页（`#/chat`）的消息气泡保持简洁，不增设单条编辑与删除入口。
+- 详细方案设计：
+  1. 历史消息编辑保存：
+     - 在“对话归档”详情编辑器中修改消息文本后点击“保存”（或按 `Ctrl+S` / `Cmd+S`）：
+       - 将 `msg.text` 更新为 `dbState.draftText`；
+       - 重置 `dbState.draftText = null`；
+       - 同步刷新左侧会话分组下的消息摘要行与右侧“所属会话”上下文列表中的对应条目，弹出轻提示 Toast：`已保存`；
+  2. 历史消息单条删除与空会话清理：
+     - 点击详情头部“删除”按钮时，弹出深色确认模态框：
+       - 标题：`删除这条消息？`
+       - 描述：`这条消息会从已保存的对话中删除，无法恢复。`
+       - 按钮：`取消` 与红色 `删除`；
+     - 用户点击确认“删除”后：
+       - 从所属会话 `session.msgs` 中移除该消息；
+       - **空会话自动清理**：过滤 `dbState.archivedSessions`，自动移除 `session.msgs.length === 0` 的空会话；
+       - 自动选中剩余归档消息列表中相邻的一条消息（若已无任何归档消息则置为 `null`），重置 `dbState.draftText = null`，弹出轻提示 Toast：`已删除`；
+  3. 界面职责边界：
+     - 历史对话消息的单条内容修改与单条删除入口收敛于个人数据库工作台的“对话归档”视图中；对话主窗口（`#/chat`）的气泡底部元信息栏仅保留时间戳与一键复制按钮（B1.12），不叠加编辑与删除按钮，保证日常对话界面的专注与整洁。
