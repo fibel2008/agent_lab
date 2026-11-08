@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/css/layout.css">
   <link rel="stylesheet" href="/css/components.css">
   <link rel="stylesheet" href="/css/chat.css">
+  <link rel="stylesheet" href="/css/database.css">
 </head>
 <body>
   <svg class="app-svg-sprite" aria-hidden="true">
@@ -68,6 +69,10 @@
     <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
       <polyline points="20 6 9 17 4 12"></polyline>
     </symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"></circle>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+    </symbol>
   </svg>
 
   <a class="skip-link" href="#main-content">跳到主内容</a>
@@ -81,7 +86,27 @@
     </a>
     <span class="app-header__divider" aria-hidden="true"></span>
     <h1 class="app-header__title" id="page-title">对话</h1>
+    <nav class="db-header-tabs" id="db-header-tabs" aria-label="个人数据库视图切换" hidden>
+      <button class="db-header-tabs__btn" type="button" data-db-view="docs">资料</button>
+      <button class="db-header-tabs__btn is-active" type="button" data-db-view="chunks">切片</button>
+      <button class="db-header-tabs__btn" type="button" data-db-view="chats">对话归档</button>
+      <span class="db-header-tabs__placeholder" aria-disabled="true">未来视图</span>
+    </nav>
     <div class="app-header__spacer"></div>
+    <div class="db-search" id="db-header-search" hidden>
+      <div class="db-search__input-wrap">
+        <svg class="db-search__icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-search"></use></svg>
+        <input
+          class="db-search__input"
+          id="db-search-input"
+          type="search"
+          placeholder="搜索资料、切片、对话 (Ctrl+K)"
+          autocomplete="off"
+          aria-label="搜索资料、切片、对话"
+        >
+      </div>
+      <div class="db-search__dropdown" id="db-search-dropdown" role="listbox" hidden></div>
+    </div>
     <button class="mode-toggle" id="mode-toggle" type="button" aria-label="切换工作台形态">
       <span class="mode-toggle__pill">
         <span class="mode-toggle__dot"></span>
@@ -166,6 +191,7 @@
           </div>
         </div>
       </section>
+      <section class="view view--database" id="view-database" aria-label="个人数据库工作台" hidden></section>
       <section class="view view--placeholder" id="view-placeholder" hidden></section>
     </main>
   </div>
