@@ -27,7 +27,7 @@
 .chat-sessions__header {
   display: flex;
   flex-direction: column;
-  width: var(--layout-session-width);
+  width: 100%;
   box-sizing: border-box;
   padding: var(--space-3) var(--space-3) var(--space-2);
   flex-shrink: 0;
@@ -54,6 +54,8 @@
   color: var(--color-text-secondary);
   font-size: var(--text-base);
   cursor: pointer;
+  white-space: nowrap;
+  box-sizing: border-box;
   transition: border-color var(--motion-fast), background-color var(--motion-fast), color var(--motion-fast);
 }
 
@@ -74,7 +76,7 @@
 .chat-sessions__list {
   flex: 1;
   min-height: 0;
-  width: var(--layout-session-width);
+  width: 100%;
   box-sizing: border-box;
   overflow-y: auto;
   overflow-x: hidden;
@@ -90,7 +92,7 @@
 .chat-sessions__footer {
   display: flex;
   align-items: center;
-  width: var(--layout-session-width);
+  width: 100%;
   box-sizing: border-box;
   padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--color-border-sidebar);
@@ -111,6 +113,8 @@
   color: var(--color-text-secondary);
   font-size: var(--text-sm);
   cursor: pointer;
+  white-space: nowrap;
+  box-sizing: border-box;
   transition: color var(--motion-fast), background-color var(--motion-fast), border-color var(--motion-fast);
 }
 
@@ -142,6 +146,8 @@
   cursor: pointer;
   position: relative;
   user-select: none;
+  box-sizing: border-box;
+  width: 100%;
   transition: background-color var(--motion-fast);
 }
 
@@ -181,7 +187,8 @@
 }
 
 .session-item:hover .session-item__actions,
-.session-item:focus-within .session-item__actions {
+.session-item:focus-within .session-item__actions,
+.session-item.is-active .session-item__actions {
   opacity: 1;
 }
 
@@ -205,7 +212,8 @@
   background-color: rgba(255, 255, 255, 0.08);
 }
 
-.session-item__action-btn[data-action="delete"]:hover {
+.session-item__action-btn[data-action="delete"]:hover,
+.session-item__action-btn--delete:hover {
   color: var(--color-danger);
   background-color: var(--color-danger-soft);
 }
@@ -715,10 +723,16 @@
   box-sizing: border-box;
   font-family: inherit;
   vertical-align: middle;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
 }
 
 .composer__input::placeholder {
   color: var(--color-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 发送按钮 */
@@ -766,6 +780,38 @@
 @media (max-width: 767px) {
   .chat-sessions {
     width: 180px;
+  }
+
+  .chat__scroll {
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+  }
+
+  .chat__composer {
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+    padding-bottom: var(--space-2);
+  }
+
+  .composer {
+    padding: 6px 8px;
+    border-radius: 12px;
+  }
+
+  .composer__row {
+    gap: 4px;
+  }
+
+  .composer__attach,
+  .composer__send {
+    width: 32px;
+    height: 32px;
+  }
+
+  .composer__attach svg,
+  .composer__send svg {
+    width: 16px;
+    height: 16px;
   }
 }
 

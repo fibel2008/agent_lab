@@ -724,6 +724,7 @@ function renderSessionList() {
           type: 'button',
           'aria-label': '删除会话',
           title: '删除',
+          'data-action': 'delete',
         },
       },
       [createSvgIcon(ICONS.TRASH, 'session-item__action-icon')],
