@@ -1,11 +1,11 @@
 """在线 ReAct Agent 实现与多轮上下文构建模块。"""
 
+from collections.abc import AsyncIterator, Callable, Sequence
 import logging
-from collections.abc import AsyncIterator, Sequence
-from typing import Optional
+from typing import Any, Optional
 
 from Assistant import config
-from Assistant.agent.base import Agent, ChatMessage
+from Assistant.agent.base import Agent, AttachmentInfo, ChatMessage
 from Assistant.agent.react import ReActLoop
 from Assistant.storage.session_store import SessionStore
 
@@ -20,7 +20,7 @@ async def build_context_messages(
     """构建单会话在线模型对话上下文。
 
     严格执行自增序号升序排布、异常消息过滤、中断标记补偿、
-    交叉序列修正与滑动窗口截取算法。
+    交叉序列修正、附件提示词注入与滑动窗口截取算法。
     """
     raw_messages = await store.get_messages(session_id)
     filtered: list[ChatMessage] = []
@@ -29,9 +29,10 @@ async def build_context_messages(
         role = item.get("role")
         content = item.get("content", "")
         status = item.get("status", "done")
+        attachments_raw = item.get("attachments", [])
 
-        # 1. 跳过空白占位消息
-        if not content.strip():
+        # 1. 跳过无内容且无附件的空白占位消息
+        if not content.strip() and not attachments_raw:
             continue
 
         # 2. 忽略错误状态卡片
@@ -43,6 +44,34 @@ async def build_context_messages(
         if status == "interrupted":
             final_content = f"{content.rstrip()}\n[此条回复此前未完整生成]"
 
+        # 4. 非图片附件提示词上下文注入 (B1.15.1)
+        if role == "user" and attachments_raw:
+            non_image_attachments = [
+                att for att in attachments_raw if not att.get("is_image", False)
+            ]
+            if non_image_attachments:
+                att_lines = [
+                    f"[当前消息包含附件: 文件名={att['filename']}, 附件标识={att['id']}, 类型={att['file_type']}]"
+                    for att in non_image_attachments
+                ]
+                att_prefix = "\n".join(att_lines)
+                final_content = (
+                    f"{att_prefix}\n{final_content}".strip()
+                    if final_content
+                    else att_prefix
+                )
+
+        attachments_info = [
+            AttachmentInfo(
+                id=att["id"],
+                filename=att["filename"],
+                file_type=att["file_type"],
+                file_size=att["file_size"],
+                is_image=att.get("is_image", False),
+            )
+            for att in attachments_raw
+        ]
+
         filtered.append(
             ChatMessage(
                 id=item.get("id"),
@@ -50,11 +79,12 @@ async def build_context_messages(
                 content=final_content,
                 seq=item.get("seq"),
                 status=status,
+                attachments=attachments_info,
                 created_at=item.get("created_at"),
             )
         )
 
-    # 4. 严格保证 user -> assistant -> user 交叉序列
+    # 5. 严格保证 user -> assistant -> user 交叉序列
     alternating: list[ChatMessage] = []
     for msg in filtered:
         if alternating and alternating[-1].role == "user" and msg.role == "user":
@@ -63,11 +93,11 @@ async def build_context_messages(
         else:
             alternating.append(msg)
 
-    # 5. 滑动窗口截取末尾不超过 max_messages 条
+    # 6. 滑动窗口截取末尾不超过 max_messages 条
     if len(alternating) > max_messages:
         alternating = alternating[-max_messages:]
 
-    # 6. 首条消息确保为 user 消息
+    # 7. 首条消息确保为 user 消息
     while alternating and alternating[0].role == "assistant":
         alternating.pop(0)
 
@@ -88,11 +118,16 @@ class OnlineAgent:
         self.react_loop = react_loop or ReActLoop()
 
     async def stream_reply(
-        self, messages: Sequence[ChatMessage]
+        self,
+        messages: Sequence[ChatMessage],
+        on_event: Optional[Callable[[str, dict[str, Any]], None]] = None,
+        session_id: Optional[str] = None,
     ) -> AsyncIterator[str]:
         """根据历史消息流式生成回复增量文本。"""
         msg_list = list(messages)
-        async for chunk in self.react_loop.run(msg_list):
+        async for chunk in self.react_loop.run(
+            msg_list, on_event=on_event, session_id=session_id
+        ):
             yield chunk
 
 

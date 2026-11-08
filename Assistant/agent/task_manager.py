@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import datetime
+import inspect
 import logging
 import time
 from typing import Any, AsyncIterator, Literal, Optional
@@ -67,6 +68,7 @@ class TaskManager:
         session_id: str,
         user_content: str,
         store: SessionStore,
+        attachments: Optional[list[dict]] = None,
     ) -> GenerationTask:
         """启动后台生成任务并在数据库原子写入 turn 与 task 记录。"""
         async with self._lock:
@@ -89,7 +91,7 @@ class TaskManager:
             )
             self._tasks[session_id] = task
 
-        # 在异步写事务中原子落盘用户消息、助手占位消息与任务记录
+        # 在异步写事务中原子落盘用户消息、附件、助手占位消息与任务记录
         try:
             await store.create_turn_and_task(
                 session_id=session_id,
@@ -97,6 +99,7 @@ class TaskManager:
                 user_content=user_content,
                 assistant_msg_id=assistant_msg_id,
                 task_id=task_id,
+                attachments=attachments,
             )
         except Exception as exc:
             async with self._lock:
@@ -133,13 +136,25 @@ class TaskManager:
         last_flush_time = time.perf_counter()
         unflushed_count = 0
 
+        # 定义给 ReAct / 工具过程广播的回调
+        def on_event(event_type: str, data: dict[str, Any]) -> None:
+            self._broadcast(task, event_type, data)
+
         try:
             # 1. 严格从数据库构建带过滤与交叉序列的上下文
             context_messages = await build_context_messages(session_id, store)
             agent = get_agent("online")
 
-            # 2. 逐块流式生成
-            async for chunk in agent.stream_reply(context_messages):
+            # 2. 逐块流式生成（支持 on_event 回调驱动工具状态广播）
+            sig = inspect.signature(agent.stream_reply)
+            if "on_event" in sig.parameters:
+                reply_stream = agent.stream_reply(
+                    context_messages, on_event=on_event, session_id=session_id
+                )
+            else:
+                reply_stream = agent.stream_reply(context_messages)
+
+            async for chunk in reply_stream:
                 accumulated_chunks.append(chunk)
                 task.chunk_buffer.append(chunk)
                 unflushed_count += 1

@@ -1,19 +1,23 @@
 """ReAct (Reasoning and Acting) 循环执行引擎模块。"""
 
+from collections.abc import AsyncIterator, Callable
+import json
 import logging
-from collections.abc import AsyncIterator
-from typing import Optional
+from typing import Any, Optional
 
 from Assistant.agent.base import ChatMessage
 from Assistant.agent.errors import LLMError
 from Assistant.agent.llm_client import LLMClient
 from Assistant.agent.tools.base import ToolCall
 from Assistant.agent.tools.registry import ToolRegistry, tool_registry
+from Assistant.storage.session_store import session_store
 
 logger = logging.getLogger("assistant.react")
 
 DEFAULT_SYSTEM_PROMPT = (
     "你是 Emibot，一个专业、友好、高效的 AI 个人助手。请清晰、准确地回答用户的问题。"
+    "若附件内容超出长度上限已被截断，你必须在回答中如实向用户声明由于文件过长仅分析了前半部分；"
+    "若附件读取失败，必须如实将失败原因告知用户，严禁凭空虚构或猜测文件内容。"
 )
 
 
@@ -21,7 +25,8 @@ class ReActLoop:
     """ReAct 循环执行引擎。
 
     包含推理（Thought）、行动（Action）与观察（Observation）三要素骨架，
-    在第二版无工具阶段采用直接流式最终回答防推理泄露策略。
+    在无工具注册时直接流式最终回答防推理泄露；在工具注册时支持工具调用、
+    SSE 过程事件广播与多轮收敛。
     """
 
     def __init__(
@@ -36,7 +41,9 @@ class ReActLoop:
         self.max_steps = max_steps
         self.system_prompt = system_prompt
 
-    async def dispatch_action(self, tool_call: ToolCall) -> str:
+    async def dispatch_action(
+        self, tool_call: ToolCall, session_id: Optional[str] = None
+    ) -> str:
         """动作分发点：根据工具调用分发至 ToolRegistry 执行并返回观察结果。"""
         if self.tools.is_empty():
             logger.warning("尝试分发动作但工具注册中心为空: tool=%s", tool_call.name)
@@ -48,37 +55,126 @@ class ReActLoop:
             raise LLMError("INTERNAL_ERROR", f"未找到已注册工具: {tool_call.name}")
 
         try:
-            observation = await tool.execute(**tool_call.arguments)
+            kwargs = dict(tool_call.arguments)
+            if session_id:
+                kwargs["session_id"] = session_id
+            observation = await tool.execute(**kwargs)
             return observation
+        except LLMError:
+            raise
         except Exception as exc:
             logger.exception("工具执行异常: tool=%s, err=%s", tool_call.name, exc)
             raise LLMError("INTERNAL_ERROR", f"工具执行失败: {exc}") from exc
 
-    async def run(self, messages: list[ChatMessage]) -> AsyncIterator[str]:
-        """ReAct 核心循环入口：根据消息历史驱动思考与行动，流式产出最终回答。"""
+    async def run(
+        self,
+        messages: list[ChatMessage],
+        on_event: Optional[Callable[[str, dict[str, Any]], None]] = None,
+        session_id: Optional[str] = None,
+    ) -> AsyncIterator[str]:
+        """ReAct 核心循环入口：驱动思考与行动，广播过程事件并流式产出最终回答。"""
+        payload_messages: list[dict[str, Any]] = []
+        if self.system_prompt:
+            payload_messages.append({"role": "system", "content": self.system_prompt})
+
+        for msg in messages:
+            payload_messages.append({"role": msg.role, "content": msg.content})
+
+        # 1. 无工具注册时直接进行最终回答流式生成，防推理过程泄露
+        if self.tools.is_empty():
+            async for chunk in self.llm_client.stream_chat(payload_messages):
+                yield chunk
+            return
+
+        # 2. 具备工具能力时的多轮 ReAct 循环
         step = 0
+        tools_schema = self.tools.list_tools()
 
         while step < self.max_steps:
             step += 1
+            logger.info("执行 ReAct 步数 %d/%d", step, self.max_steps)
 
-            # 第二版特化约束：无工具注册阶段直接进行最终回答流式生成，防推理过程泄露
-            if self.tools.is_empty():
-                payload_messages: list[dict[str, str]] = []
-                if self.system_prompt:
-                    payload_messages.append({"role": "system", "content": self.system_prompt})
+            resp_msg = await self.llm_client.chat_completion(
+                payload_messages, tools=tools_schema
+            )
+            tool_calls = resp_msg.get("tool_calls")
 
-                for msg in messages:
-                    payload_messages.append({"role": msg.role, "content": msg.content})
+            # 若模型决定调用工具
+            if tool_calls:
+                payload_messages.append({
+                    "role": "assistant",
+                    "content": resp_msg.get("content") or "",
+                    "tool_calls": tool_calls,
+                })
 
-                async for chunk in self.llm_client.stream_chat(payload_messages):
-                    yield chunk
+                for tc in tool_calls:
+                    fn = tc.get("function", {})
+                    tool_name = fn.get("name")
+                    raw_args = fn.get("arguments", "{}")
+                    if isinstance(raw_args, str):
+                        try:
+                            args = json.loads(raw_args)
+                        except json.JSONDecodeError:
+                            args = {}
+                    else:
+                        args = raw_args or {}
 
-                # 单次生成即完成最终回答收敛，退出循环
-                return
+                    # 提取附件名称用于状态文案展示
+                    filename = args.get("attachment_id", "未知附件")
+                    if tool_name == "read_attachment":
+                        att_id = args.get("attachment_id", "")
+                        att_record = await session_store.get_attachment(att_id)
+                        if att_record:
+                            filename = att_record["filename"]
 
-            # 后续阶段接入具体工具时的通用 ReAct 循环扩展占位
-            # 当有注册工具时，此处将集成工具调用判定与 dispatch_action
-            raise NotImplementedError("多工具 ReAct 闭环将在后续阶段接入具体工具时启用")
+                    # 1. 广播 tool_start 事件
+                    if on_event:
+                        on_event(
+                            "tool_start",
+                            {
+                                "tool": tool_name,
+                                "attachment_name": filename,
+                                "status_text": f"正在读取附件 {filename}...",
+                            },
+                        )
+
+                    # 2. 分发执行工具动作
+                    call_obj = ToolCall(id=tc.get("id", ""), name=tool_name, arguments=args)
+                    tool_status = "success"
+                    try:
+                        observation = await self.dispatch_action(call_obj, session_id=session_id)
+                        if observation.startswith("[读取失败") or observation.startswith("[错误"):
+                            tool_status = "error"
+                    except Exception as exc:
+                        observation = f"[读取失败：{exc}]"
+                        tool_status = "error"
+
+                    # 3. 广播 tool_done 事件
+                    if on_event:
+                        on_event(
+                            "tool_done",
+                            {
+                                "tool": tool_name,
+                                "status": tool_status,
+                            },
+                        )
+
+                    # 4. 存入 ReAct 上下文
+                    payload_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.get("id", ""),
+                        "content": observation,
+                    })
+
+                # 继续下一轮循环驱动大模型思考与生成
+                continue
+
+            # 若模型未调用工具，产出最终回答并流式切片返回
+            final_content = resp_msg.get("content") or ""
+            chunk_size = 4
+            for i in range(0, len(final_content), chunk_size):
+                yield final_content[i : i + chunk_size]
+            return
 
         # 超过最大步数仍未产出最终回答
         logger.error("ReAct 循环达到最大步数上限 %d 仍未收敛", self.max_steps)
