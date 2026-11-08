@@ -95,6 +95,30 @@ export async function sendOnlineMessage(sessionId, content, files = []) {
   return await response.json();
 }
 
+export async function uploadCacheAttachments(files = []) {
+  if (!files || files.length === 0) {
+    return [];
+  }
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append('files', file);
+  }
+  const response = await fetch('/api/attachments/cache', {
+    method: 'POST',
+    body: formData,
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    const error = new Error(err.message || err.detail || `上传缓存附件失败: HTTP ${response.status}`);
+    error.status = response.status;
+    error.code = err.code || `HTTP_${response.status}`;
+    error.payload = err;
+    throw error;
+  }
+  const data = await response.json();
+  return data.attachments || data;
+}
+
 export async function openAttachment(attachmentId) {
   const response = await fetch(`/api/attachments/${encodeURIComponent(attachmentId)}/open`, {
     method: 'POST',
@@ -127,6 +151,7 @@ export async function abortOnlineChat(sessionId) {
 export async function subscribeChatStream(sessionId, {
   signal,
   onMeta,
+  onStepStatus,
   onDelta,
   onToolStart,
   onToolDone,
@@ -169,13 +194,14 @@ export async function subscribeChatStream(sessionId, {
     return;
   }
 
-  await readSSEStream(response, signal, { onMeta, onDelta, onToolStart, onToolDone, onDone, onError });
+  await readSSEStream(response, signal, { onMeta, onStepStatus, onDelta, onToolStart, onToolDone, onDone, onError });
 }
 
 export async function streamChat({
   messages,
   signal,
   onMeta,
+  onStepStatus,
   onDelta,
   onToolStart,
   onToolDone,
@@ -222,10 +248,10 @@ export async function streamChat({
     return;
   }
 
-  await readSSEStream(response, signal, { onMeta, onDelta, onToolStart, onToolDone, onDone, onError });
+  await readSSEStream(response, signal, { onMeta, onStepStatus, onDelta, onToolStart, onToolDone, onDone, onError });
 }
 
-async function readSSEStream(response, signal, { onMeta, onDelta, onToolStart, onToolDone, onDone, onError }) {
+async function readSSEStream(response, signal, { onMeta, onStepStatus, onDelta, onToolStart, onToolDone, onDone, onError }) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
@@ -253,7 +279,7 @@ async function readSSEStream(response, signal, { onMeta, onDelta, onToolStart, o
       for (const eventChunk of events) {
         const trimmed = eventChunk.trim();
         if (trimmed) {
-          parseAndDispatchEvent(trimmed, { onMeta, onDelta, onToolStart, onToolDone, onDone, onError });
+          parseAndDispatchEvent(trimmed, { onMeta, onStepStatus, onDelta, onToolStart, onToolDone, onDone, onError });
         }
       }
     }
@@ -261,7 +287,7 @@ async function readSSEStream(response, signal, { onMeta, onDelta, onToolStart, o
     // 处理流结束时缓冲区可能剩余的最后一个事件块
     const remaining = buffer.trim();
     if (remaining) {
-      parseAndDispatchEvent(remaining, { onMeta, onDelta, onToolStart, onToolDone, onDone, onError });
+      parseAndDispatchEvent(remaining, { onMeta, onStepStatus, onDelta, onToolStart, onToolDone, onDone, onError });
     }
   } catch (readError) {
     if (signal?.aborted) {
@@ -274,7 +300,7 @@ async function readSSEStream(response, signal, { onMeta, onDelta, onToolStart, o
   }
 }
 
-function parseAndDispatchEvent(chunk, { onMeta, onDelta, onToolStart, onToolDone, onDone, onError }) {
+function parseAndDispatchEvent(chunk, { onMeta, onStepStatus, onDelta, onToolStart, onToolDone, onDone, onError }) {
   const lines = chunk.split('\n');
   let eventType = 'message';
   let dataLines = [];
@@ -303,6 +329,9 @@ function parseAndDispatchEvent(chunk, { onMeta, onDelta, onToolStart, onToolDone
   switch (eventType) {
     case 'meta':
       onMeta?.(payload);
+      break;
+    case 'step_status':
+      onStepStatus?.(payload);
       break;
     case 'delta':
       onDelta?.(payload);

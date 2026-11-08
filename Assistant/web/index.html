@@ -131,7 +131,21 @@
             </button>
           </div>
         </aside>
-        <div class="chat" id="chat-main">
+        <div class="chat" id="chat-panel">
+          <div class="chat-drag-overlay" id="chat-drag-overlay" hidden>
+            <div class="chat-drag-card">
+              <div class="chat-drag-card__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><use href="#icon-paperclip"></use></svg>
+              </div>
+              <h3 class="chat-drag-card__title">拖入此处添加附件</h3>
+              <p class="chat-drag-card__desc">支持格式：图片 (.png/.jpg/.jpeg/.webp)、文档 (.docx/.xlsx/.pptx/.pdf)、文本/代码 (.txt/.md/.py 等)</p>
+              <div class="chat-drag-card__specs">
+                <span class="chat-drag-card__spec">单文件不超过 5MB</span>
+                <span class="chat-drag-card__divider">·</span>
+                <span class="chat-drag-card__spec">单条消息最多 3 个附件</span>
+              </div>
+            </div>
+          </div>
           <div class="chat-banner" id="chat-banner" role="alert" hidden>
             <span class="chat-banner__text" id="chat-banner-text"></span>
             <button class="chat-banner__close" id="chat-banner-close" type="button" aria-label="关闭提示">×</button>

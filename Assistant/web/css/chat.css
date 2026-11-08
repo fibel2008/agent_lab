@@ -251,6 +251,7 @@
 
 /* 右侧对话主区域 */
 .chat {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -258,6 +259,89 @@
   min-width: 0;
   width: 100%;
   height: 100%;
+}
+
+/* 全对话区拖拽附件蒙层与背景虚化 (B1.13) */
+.chat-drag-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(26, 26, 26, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  pointer-events: none;
+  padding: var(--space-4);
+  transition: opacity var(--motion-fast);
+}
+
+.chat-drag-overlay[hidden] {
+  display: none !important;
+}
+
+.chat-drag-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  background-color: var(--color-surface);
+  border: 2px dashed var(--color-primary);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6) var(--space-7);
+  max-width: 460px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.chat-drag-card__icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-primary-soft);
+  color: var(--color-primary);
+  margin-bottom: var(--space-3);
+}
+
+.chat-drag-card__icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.chat-drag-card__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.chat-drag-card__desc {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  line-height: var(--leading-base);
+}
+
+.chat-drag-card__specs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+}
+
+.chat-drag-card__spec {
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.chat-drag-card__divider {
+  color: var(--color-text-dim);
 }
 
 /* 滚动容器：使滚动条贴齐右侧，并在整个视口内响应滚轮 */
@@ -1036,6 +1120,93 @@
 }
 
 @keyframes tool-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Agent 规划步骤指示器组件 (思考 / 工具调用 / 生成) */
+.agent-step-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 10px;
+  background-color: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-2);
+  transition: all var(--motion-base);
+}
+
+.agent-step-status__icon {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-primary);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: agent-step-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.agent-step-status--thinking .agent-step-status__icon {
+  border-color: var(--color-primary);
+  border-top-color: transparent;
+}
+
+.agent-step-status--calling_tool {
+  background-color: var(--color-primary-softer);
+  border-color: var(--color-primary-strong);
+  color: var(--color-primary);
+}
+
+.agent-step-status--calling_tool .agent-step-status__icon {
+  border-color: var(--color-primary);
+  border-top-color: transparent;
+}
+
+.agent-step-status--generating .agent-step-status__icon {
+  border-color: var(--color-primary-hover);
+  border-top-color: transparent;
+}
+
+/* 收到 delta / 持续流式生成时的平滑过渡 */
+.agent-step-status.has-delta {
+  margin-bottom: var(--space-2);
+  opacity: 0.9;
+}
+
+/* 生成完成时收拢为完成状态 */
+.agent-step-status.is-done {
+  border-color: var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text-muted);
+  opacity: 0.85;
+  padding: 2px 8px;
+}
+
+.agent-step-status.is-done .agent-step-status__icon {
+  animation: none;
+  border: none;
+  background-color: transparent;
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-step-status.is-done .agent-step-status__icon::after {
+  content: "✓";
+  display: block;
+  font-size: 11px;
+  line-height: 12px;
+  color: var(--color-success);
+  font-weight: bold;
+}
+
+@keyframes agent-step-spin {
   to {
     transform: rotate(360deg);
   }

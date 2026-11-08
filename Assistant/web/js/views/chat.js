@@ -12,6 +12,7 @@ import {
   sendOnlineMessage,
   streamChat,
   subscribeChatStream,
+  uploadCacheAttachments,
 } from '../api.js';
 import { createSvgIcon, el, formatTimestamp, isNearBottom, scrollToBottom } from '../dom.js';
 import { ICONS } from '../icons.js';
@@ -282,25 +283,46 @@ export function initChatView() {
     });
   }
 
-  // 拖拽文件进入输入框容器
-  composerFormEl.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    composerFormEl.classList.add('is-dragover');
-  });
+  // 拖拽文件进入全对话区域面板 (#chat-panel)
+  const chatPanelEl = document.getElementById('chat-panel');
+  const chatDragOverlayEl = document.getElementById('chat-drag-overlay');
+  let dragCounter = 0;
 
-  composerFormEl.addEventListener('dragleave', (e) => {
-    if (!composerFormEl.contains(e.relatedTarget)) {
-      composerFormEl.classList.remove('is-dragover');
-    }
-  });
+  if (chatPanelEl) {
+    chatPanelEl.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      dragCounter++;
+      if (chatDragOverlayEl) {
+        chatDragOverlayEl.hidden = false;
+      }
+    });
 
-  composerFormEl.addEventListener('drop', (e) => {
-    e.preventDefault();
-    composerFormEl.classList.remove('is-dragover');
-    if (e.dataTransfer && e.dataTransfer.files) {
-      handleIncomingFiles(e.dataTransfer.files);
-    }
-  });
+    chatPanelEl.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+
+    chatPanelEl.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        if (chatDragOverlayEl) {
+          chatDragOverlayEl.hidden = true;
+        }
+      }
+    });
+
+    chatPanelEl.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      if (chatDragOverlayEl) {
+        chatDragOverlayEl.hidden = true;
+      }
+      if (e.dataTransfer && e.dataTransfer.files) {
+        handleIncomingFiles(e.dataTransfer.files);
+      }
+    });
+  }
 
   // Ctrl+V 粘贴文件与截图
   composerInputEl.addEventListener('paste', (e) => {
@@ -391,14 +413,40 @@ function handleIncomingFiles(fileList) {
 
   const currentPending = getPendingAttachments();
 
+  // 对比传入的文件与当前 pendingAttachments（按文件名 name 与大小 size 比对），同时对传入批次内部也去重
+  const newFiles = [];
+  const seenInBatch = new Set();
+
+  for (const file of incomingFiles) {
+    const key = `${file.name}__${file.size}`;
+    if (seenInBatch.has(key)) {
+      continue;
+    }
+    seenInBatch.add(key);
+
+    const isDuplicate = currentPending.some(
+      (p) =>
+        (p.name === file.name || p.file?.name === file.name) &&
+        (p.size === file.size || p.file?.size === file.size),
+    );
+    if (!isDuplicate) {
+      newFiles.push(file);
+    }
+  }
+
+  // 重复文件静默忽略，不弹窗；若无真正新增文件直接返回
+  if (newFiles.length === 0) {
+    return;
+  }
+
   // ① 校验数量上限：单条消息最多 3 个
-  if (currentPending.length + incomingFiles.length > MAX_ATTACHMENTS) {
+  if (currentPending.length + newFiles.length > MAX_ATTACHMENTS) {
     showAlertModal('无法添加附件', '单条消息最多添加 3 个附件。');
     return;
   }
 
   // ② 校验文件格式白名单
-  for (const file of incomingFiles) {
+  for (const file of newFiles) {
     const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
     if (!ALLOWED_EXTS.has(ext)) {
       showAlertModal(
@@ -410,7 +458,7 @@ function handleIncomingFiles(fileList) {
   }
 
   // ③ 校验单个文件大小上限：5MB
-  for (const file of incomingFiles) {
+  for (const file of newFiles) {
     if (file.size > MAX_FILE_SIZE) {
       showAlertModal('无法添加附件', `文件 '${file.name}' 大小超出 5MB 限制。`);
       return;
@@ -418,7 +466,7 @@ function handleIncomingFiles(fileList) {
   }
 
   // 全部合格，加入待发送池 (B1.13.1)
-  for (const file of incomingFiles) {
+  for (const file of newFiles) {
     const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
     const isImage = IMAGE_EXTS.has(ext);
     const item = {
@@ -986,6 +1034,54 @@ function renderActiveSession() {
   }
 }
 
+function createStepStatusElement(status = 'thinking', text = '正在思考...') {
+  const container = el('div', {
+    className: `agent-step-status agent-step-status--${status}`,
+  });
+  const icon = el('span', { className: 'agent-step-status__icon' });
+  const textSpan = el('span', {
+    className: 'agent-step-status__text',
+    text,
+  });
+  container.appendChild(icon);
+  container.appendChild(textSpan);
+  return container;
+}
+
+function updateStepStatus(cardNode, status, text) {
+  if (!cardNode) return;
+  const bubble = cardNode.querySelector('.msg__bubble');
+  if (!bubble) return;
+
+  const waitingEl = cardNode.querySelector('.msg__waiting');
+  if (waitingEl) waitingEl.remove();
+
+  let stepEl = bubble.querySelector('.agent-step-status');
+  if (!stepEl) {
+    stepEl = createStepStatusElement(status, text || '正在思考...');
+    const textEl = bubble.querySelector('.msg__text');
+    if (textEl) {
+      bubble.insertBefore(stepEl, textEl);
+    } else {
+      bubble.appendChild(stepEl);
+    }
+  } else {
+    stepEl.className = `agent-step-status agent-step-status--${status}`;
+    const textSpan = stepEl.querySelector('.agent-step-status__text');
+    if (textSpan && text) {
+      textSpan.textContent = text;
+    }
+  }
+
+  if (status === 'done' || status === 'completed') {
+    stepEl.classList.add('is-done');
+    const textSpan = stepEl.querySelector('.agent-step-status__text');
+    if (textSpan) {
+      textSpan.textContent = text || '规划完成';
+    }
+  }
+}
+
 function createMessageNode(message) {
   const isUser = message.role === 'user';
   const roleClass = isUser ? 'msg--user' : 'msg--agent msg--assistant';
@@ -1054,14 +1150,10 @@ function createMessageNode(message) {
     bubble.appendChild(attContainer);
   }
 
-  // 2. 助手流式等待动画
+  // 2. 助手流式规划步骤指示器
   if (!isUser && message.status === 'streaming' && !message.content) {
-    const waiting = el('div', { className: 'msg__waiting' }, [
-      el('span', { className: 'msg__waiting-dot' }),
-      el('span', { className: 'msg__waiting-dot' }),
-      el('span', { className: 'msg__waiting-dot' }),
-    ]);
-    bubble.appendChild(waiting);
+    const stepEl = createStepStatusElement('thinking', '正在思考...');
+    bubble.appendChild(stepEl);
   }
 
   const shouldRenderMarkdown = getMode() === 'online' && !isUser && !(isError && !message.content);
@@ -1324,14 +1416,32 @@ async function handleSubmit() {
     return;
   }
 
-  // 离线形态发送逻辑 (Mock 模式带附件直出)
-  const offlineAtts = pending.map((a) => ({
-    id: a.id,
-    filename: a.name,
-    file_type: a.ext.slice(1),
-    file_size: a.size,
-    is_image: a.isImage,
-  }));
+  // 离线形态发送逻辑 (Mock 模式带附件上传缓存后直出)
+  let offlineAtts = [];
+  const pendingFiles = pending.map((a) => a.file).filter(Boolean);
+  if (pendingFiles.length > 0) {
+    try {
+      const uploaded = await uploadCacheAttachments(pendingFiles);
+      offlineAtts = (uploaded || []).map((att) => ({
+        id: att.id,
+        filename: att.filename,
+        file_type: att.file_type,
+        file_size: att.file_size,
+        is_image: att.is_image,
+      }));
+    } catch (err) {
+      showAlertModal('无法添加附件', err.message || '上传缓存附件失败');
+      return;
+    }
+  } else {
+    offlineAtts = pending.map((a) => ({
+      id: a.id,
+      filename: a.name,
+      file_type: a.ext.slice(1),
+      file_size: a.size,
+      is_image: a.isImage,
+    }));
+  }
 
   const userMessage = addUserMessage(text, activeSession.id, null, offlineAtts);
   setSessionDraft(activeSession.id, '');
@@ -1402,6 +1512,20 @@ function subscribeOnlineSession(sessionId, messageId) {
       if (message_id) patch.id = message_id;
       updateMessage(messageId, patch, sessionId);
     },
+    onStepStatus(data) {
+      // 监听到 Agent 规划步骤状态广播 (B1.15.3 升级)
+      if (getActiveSessionId() === sessionId && messagesEl) {
+        const cardNode = messagesEl.querySelector(
+          `[data-message-id="${messageId}"]`,
+        );
+        if (cardNode) {
+          updateStepStatus(cardNode, data?.status || 'thinking', data?.text);
+          if (shouldAutoScroll && chatScrollEl) {
+            scrollToBottom(chatScrollEl);
+          }
+        }
+      }
+    },
     onToolStart(data) {
       // 监听到 ReAct 工具调用开始，展示胶囊 (B1.15.3)
       if (getActiveSessionId() === sessionId && messagesEl) {
@@ -1470,6 +1594,12 @@ function subscribeOnlineSession(sessionId, messageId) {
         if (cardNode) {
           const waitingEl = cardNode.querySelector('.msg__waiting');
           if (waitingEl) waitingEl.remove();
+
+          const stepEl = cardNode.querySelector('.agent-step-status');
+          if (stepEl) {
+            stepEl.classList.add('has-delta');
+          }
+
           let textEl = cardNode.querySelector('.msg__text');
           if (textEl) {
             if (!textEl.classList.contains('msg__text--markdown')) {
@@ -1497,6 +1627,8 @@ function subscribeOnlineSession(sessionId, messageId) {
           cardNode.classList.remove('is-streaming');
           const waitingEl = cardNode.querySelector('.msg__waiting');
           if (waitingEl) waitingEl.remove();
+          updateStepStatus(cardNode, 'done', '规划完成');
+
           if (isInterrupted) {
             cardNode.classList.add('is-interrupted');
             const bubble = cardNode.querySelector('.msg__bubble');
@@ -1528,6 +1660,8 @@ function subscribeOnlineSession(sessionId, messageId) {
           cardNode.classList.add('is-error');
           const waitingEl = cardNode.querySelector('.msg__waiting');
           if (waitingEl) waitingEl.remove();
+          const stepEl = cardNode.querySelector('.agent-step-status');
+          if (stepEl) stepEl.remove();
 
           const bubble = cardNode.querySelector('.msg__bubble');
           const textEl = cardNode.querySelector('.msg__text');
@@ -1584,6 +1718,16 @@ async function processQueue() {
   const controller = new AbortController();
   setCurrentAbortController(controller);
 
+  // Mock 模式开始规划步骤：正在思考...
+  if (getActiveSessionId() === sessionId && messagesEl) {
+    const cardNode = messagesEl.querySelector(
+      `[data-message-id="${agentMessage.id}"], [data-message-id="${messageId}"]`,
+    );
+    if (cardNode) {
+      updateStepStatus(cardNode, 'thinking', '正在思考...');
+    }
+  }
+
   try {
     await streamChat({
       messages: snapshot,
@@ -1596,6 +1740,9 @@ async function processQueue() {
             `[data-message-id="${prevId}"], [data-message-id="${messageId}"]`,
           );
           if (cardNode) {
+            // 收到元信息，转为正在生成回复...
+            updateStepStatus(cardNode, 'generating', '正在生成回复...');
+
             if (message_id) {
               cardNode.dataset.messageId = message_id;
             }
@@ -1619,6 +1766,16 @@ async function processQueue() {
         }
         updateMessage(prevId, patch, sessionId);
       },
+      onStepStatus(data) {
+        if (getActiveSessionId() === sessionId && messagesEl) {
+          const cardNode = messagesEl.querySelector(
+            `[data-message-id="${agentMessage.id}"], [data-message-id="${messageId}"]`,
+          );
+          if (cardNode) {
+            updateStepStatus(cardNode, data?.status || 'thinking', data?.text);
+          }
+        }
+      },
       onDelta({ text }) {
         if (!text) {
           return;
@@ -1637,6 +1794,12 @@ async function processQueue() {
             if (waitingEl) {
               waitingEl.remove();
             }
+
+            const stepEl = cardNode.querySelector('.agent-step-status');
+            if (stepEl) {
+              stepEl.classList.add('has-delta');
+            }
+
             const textEl = cardNode.querySelector('.msg__text');
             if (textEl) {
               textEl.textContent = agentMessage.content;
@@ -1661,6 +1824,8 @@ async function processQueue() {
               waitingEl.remove();
             }
             cardNode.classList.remove('is-streaming');
+            updateStepStatus(cardNode, 'done', '规划完成');
+
             if (shouldAutoScroll && chatScrollEl) {
               scrollToBottom(chatScrollEl);
             }
@@ -1687,6 +1852,9 @@ async function processQueue() {
             }
             cardNode.classList.remove('is-streaming');
             cardNode.classList.add('is-error');
+
+            const stepEl = cardNode.querySelector('.agent-step-status');
+            if (stepEl) stepEl.remove();
 
             const bubble = cardNode.querySelector('.msg__bubble');
             const textEl = cardNode.querySelector('.msg__text');
