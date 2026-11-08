@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .agent.task_manager import task_manager
+from .agent.tools import read_attachment_tool, tool_registry
+from .api.attachments import router as attachments_router
 from .api.chat import router as chat_router
 from .api.config_status import router as config_status_router
 from .api.health import router as health_router
@@ -31,6 +33,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Initializing Emibot v%s runtime...", APP_VERSION)
     await init_db()
     await session_store.recover_interrupted_tasks()
+    # 确保默认工具在启动时已向 ToolRegistry 注册
+    tool_registry.register(read_attachment_tool)
     yield
     logger.info("Shutting down Emibot runtime...")
     await task_manager.shutdown()
@@ -101,6 +105,7 @@ def create_app() -> FastAPI:
     application.include_router(health_router)
     application.include_router(config_status_router)
     application.include_router(sessions_router)
+    application.include_router(attachments_router)
     application.include_router(chat_router)
 
     # 静态资源托管
