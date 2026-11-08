@@ -27,7 +27,7 @@
 .chat-sessions__header {
   display: flex;
   flex-direction: column;
-  width: var(--layout-session-width);
+  width: 100%;
   box-sizing: border-box;
   padding: var(--space-3) var(--space-3) var(--space-2);
   flex-shrink: 0;
@@ -54,6 +54,8 @@
   color: var(--color-text-secondary);
   font-size: var(--text-base);
   cursor: pointer;
+  white-space: nowrap;
+  box-sizing: border-box;
   transition: border-color var(--motion-fast), background-color var(--motion-fast), color var(--motion-fast);
 }
 
@@ -74,7 +76,7 @@
 .chat-sessions__list {
   flex: 1;
   min-height: 0;
-  width: var(--layout-session-width);
+  width: 100%;
   box-sizing: border-box;
   overflow-y: auto;
   overflow-x: hidden;
@@ -90,7 +92,7 @@
 .chat-sessions__footer {
   display: flex;
   align-items: center;
-  width: var(--layout-session-width);
+  width: 100%;
   box-sizing: border-box;
   padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--color-border-sidebar);
@@ -111,6 +113,8 @@
   color: var(--color-text-secondary);
   font-size: var(--text-sm);
   cursor: pointer;
+  white-space: nowrap;
+  box-sizing: border-box;
   transition: color var(--motion-fast), background-color var(--motion-fast), border-color var(--motion-fast);
 }
 
@@ -142,6 +146,8 @@
   cursor: pointer;
   position: relative;
   user-select: none;
+  box-sizing: border-box;
+  width: 100%;
   transition: background-color var(--motion-fast);
 }
 
@@ -181,7 +187,8 @@
 }
 
 .session-item:hover .session-item__actions,
-.session-item:focus-within .session-item__actions {
+.session-item:focus-within .session-item__actions,
+.session-item.is-active .session-item__actions {
   opacity: 1;
 }
 
@@ -205,7 +212,8 @@
   background-color: rgba(255, 255, 255, 0.08);
 }
 
-.session-item__action-btn[data-action="delete"]:hover {
+.session-item__action-btn[data-action="delete"]:hover,
+.session-item__action-btn--delete:hover {
   color: var(--color-danger);
   background-color: var(--color-danger-soft);
 }
@@ -243,6 +251,7 @@
 
 /* 右侧对话主区域 */
 .chat {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -250,6 +259,89 @@
   min-width: 0;
   width: 100%;
   height: 100%;
+}
+
+/* 全对话区拖拽附件蒙层与背景虚化 (B1.13) */
+.chat-drag-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(26, 26, 26, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  pointer-events: none;
+  padding: var(--space-4);
+  transition: opacity var(--motion-fast);
+}
+
+.chat-drag-overlay[hidden] {
+  display: none !important;
+}
+
+.chat-drag-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  background-color: var(--color-surface);
+  border: 2px dashed var(--color-primary);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6) var(--space-7);
+  max-width: 460px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.chat-drag-card__icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-primary-soft);
+  color: var(--color-primary);
+  margin-bottom: var(--space-3);
+}
+
+.chat-drag-card__icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.chat-drag-card__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.chat-drag-card__desc {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  line-height: var(--leading-base);
+}
+
+.chat-drag-card__specs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+}
+
+.chat-drag-card__spec {
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.chat-drag-card__divider {
+  color: var(--color-text-dim);
 }
 
 /* 滚动容器：使滚动条贴齐右侧，并在整个视口内响应滚轮 */
@@ -715,10 +807,16 @@
   box-sizing: border-box;
   font-family: inherit;
   vertical-align: middle;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
 }
 
 .composer__input::placeholder {
   color: var(--color-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 发送按钮 */
@@ -766,5 +864,311 @@
 @media (max-width: 767px) {
   .chat-sessions {
     width: 180px;
+  }
+
+  .chat__scroll {
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+  }
+
+  .chat__composer {
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+    padding-bottom: var(--space-2);
+  }
+
+  .composer {
+    padding: 6px 8px;
+    border-radius: 12px;
+  }
+
+  .composer__row {
+    gap: 4px;
+  }
+
+  .composer__attach,
+  .composer__send {
+    width: 32px;
+    height: 32px;
+  }
+
+  .composer__attach svg,
+  .composer__send svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* 附件交互与呈现样式 (B1.13 - B1.15) */
+
+/* 拖拽进入高亮边框 */
+.composer.is-dragover {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 3px var(--color-primary-softer) !important;
+  background-color: var(--color-surface-hover) !important;
+}
+
+/* 添加附件回形针按钮 */
+.composer__attach {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color var(--motion-fast), background-color var(--motion-fast);
+}
+
+.composer__attach svg {
+  width: 18px;
+  height: 18px;
+}
+
+.composer__attach:hover {
+  color: var(--color-primary);
+  background-color: var(--color-surface-hover);
+}
+
+/* 待发送附件容器 */
+.pending-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pending-attachments[hidden] {
+  display: none !important;
+}
+
+/* 待发送附件胶囊条目 */
+.pending-attachment-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background-color: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  max-width: 240px;
+  font-size: 12px;
+  user-select: none;
+}
+
+.pending-attachment-item__icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--color-primary);
+}
+
+.pending-attachment-item__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  color: var(--color-text);
+}
+
+.pending-attachment-item__size {
+  color: var(--color-text-dim);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.pending-attachment-item__remove {
+  background: transparent;
+  border: none;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  margin-left: 2px;
+  border-radius: 2px;
+  transition: color var(--motion-fast);
+}
+
+.pending-attachment-item__remove:hover {
+  color: var(--color-danger);
+}
+
+/* 消息气泡内的附件列表 */
+.msg__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* 附件卡片通用样式 */
+.attachment-card {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface-soft);
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast), transform var(--motion-fast);
+  overflow: hidden;
+  user-select: none;
+}
+
+.attachment-card:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 2px 10px rgba(91, 164, 212, 0.25);
+}
+
+/* 图片附件卡片 */
+.attachment-card--image {
+  display: inline-flex;
+  flex-direction: column;
+  max-width: 180px;
+}
+
+.attachment-card__thumb {
+  max-width: 180px;
+  max-height: 180px;
+  object-fit: cover;
+  display: block;
+  border-radius: calc(var(--radius-sm) - 1px);
+  transition: transform var(--motion-fast);
+}
+
+.attachment-card--image:hover .attachment-card__thumb {
+  transform: scale(1.02);
+}
+
+/* 非图片文件卡片 */
+.attachment-card--file {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  min-width: 180px;
+  max-width: 260px;
+}
+
+.attachment-card__icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  color: var(--color-primary);
+}
+
+.attachment-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.attachment-card__name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-all;
+  line-height: 1.35;
+}
+
+.attachment-card__size {
+  font-size: 11px;
+  color: var(--color-text-dim);
+}
+
+/* Agent 规划步骤指示器组件 (思考 / 工具调用 / 生成) */
+.agent-step-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 10px;
+  background-color: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-2);
+  transition: all var(--motion-base);
+}
+
+.agent-step-status__icon {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-primary);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: agent-step-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.agent-step-status--thinking .agent-step-status__icon {
+  border-color: var(--color-primary);
+  border-top-color: transparent;
+}
+
+.agent-step-status--calling_tool {
+  background-color: var(--color-primary-softer);
+  border-color: var(--color-primary-strong);
+  color: var(--color-primary);
+}
+
+.agent-step-status--calling_tool .agent-step-status__icon {
+  border-color: var(--color-primary);
+  border-top-color: transparent;
+}
+
+.agent-step-status--generating .agent-step-status__icon {
+  border-color: var(--color-primary-hover);
+  border-top-color: transparent;
+}
+
+/* 收到 delta / 持续流式生成时的平滑过渡 */
+.agent-step-status.has-delta {
+  margin-bottom: var(--space-2);
+  opacity: 0.9;
+}
+
+/* 生成完成时收拢为完成状态 */
+.agent-step-status.is-done {
+  border-color: var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text-muted);
+  opacity: 0.85;
+  padding: 2px 8px;
+}
+
+.agent-step-status.is-done .agent-step-status__icon {
+  animation: none;
+  border: none;
+  background-color: transparent;
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-step-status.is-done .agent-step-status__icon::after {
+  content: "✓";
+  display: block;
+  font-size: 11px;
+  line-height: 12px;
+  color: var(--color-success);
+  font-weight: bold;
+}
+
+@keyframes agent-step-spin {
+  to {
+    transform: rotate(360deg);
   }
 }

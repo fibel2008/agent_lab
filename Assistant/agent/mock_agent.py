@@ -25,6 +25,15 @@ class MockAgent:
                 "请输入你想探讨的 Agent 学习话题以体验流式回复。"
             )
 
+        # 离线形态带附件文字反馈 (B1.15.3)
+        if last_user_msg.attachments:
+            count = len(last_user_msg.attachments)
+            file_names = [att.filename for att in last_user_msg.attachments]
+            return (
+                f"已收到 {count} 个文件：{'、'.join(file_names)}。"
+                "当前处于离线模式，不执行附件解析与工具调用。"
+            )
+
         text = last_user_msg.content.strip().lower()
 
         if any(kw in text for kw in ("你好", "hello", "hi")):

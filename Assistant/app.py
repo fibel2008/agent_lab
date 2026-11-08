@@ -3,13 +3,17 @@
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 import mimetypes
+import shutil
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import config
 from .agent.task_manager import task_manager
+from .agent.tools import read_attachment_tool, tool_registry
+from .api.attachments import clear_cache_attachments, router as attachments_router
 from .api.chat import router as chat_router
 from .api.config_status import router as config_status_router
 from .api.health import router as health_router
@@ -27,10 +31,23 @@ LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "testserver"}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """管理全局资源生命周期：启动初始化数据库与任务补偿扫描，关闭安全断开连接。"""
+    """管理全局资源生命周期：启动初始化数据库与任务补偿扫描，清空附件缓存，关闭安全断开连接。"""
     logger.info("Initializing Emibot v%s runtime...", APP_VERSION)
     await init_db()
     await session_store.recover_interrupted_tasks()
+
+    # 启动清理：清空附件缓存目录的所有文件并确保目录存在，重置内存缓存
+    try:
+        if config.ATTACHMENT_CACHE_DIR.exists():
+            shutil.rmtree(config.ATTACHMENT_CACHE_DIR, ignore_errors=True)
+        config.ATTACHMENT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        clear_cache_attachments()
+        logger.info("已清空并初始化附件缓存目录: %s", config.ATTACHMENT_CACHE_DIR)
+    except Exception as exc:
+        logger.warning("初始化附件缓存目录失败: %s", exc)
+
+    # 确保默认工具在启动时已向 ToolRegistry 注册
+    tool_registry.register(read_attachment_tool)
     yield
     logger.info("Shutting down Emibot runtime...")
     await task_manager.shutdown()
@@ -101,6 +118,7 @@ def create_app() -> FastAPI:
     application.include_router(health_router)
     application.include_router(config_status_router)
     application.include_router(sessions_router)
+    application.include_router(attachments_router)
     application.include_router(chat_router)
 
     # 静态资源托管

@@ -5,7 +5,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-from ..agent.base import ChatMessage
+from ..agent.base import AttachmentInfo, ChatMessage
 from ..config import MAX_MESSAGE_CHARS, MAX_MESSAGES
 
 
@@ -27,7 +27,8 @@ class ChatRequest(BaseModel):
             raise ValueError("messages 列表不能为空")
         for idx, msg in enumerate(messages):
             stripped = msg.content.strip()
-            if not stripped:
+            # 允许有附件时内容为空白，或者无附件时内容非空
+            if not stripped and not msg.attachments:
                 raise ValueError(f"第 {idx + 1} 条消息 content 不能为空白字符")
             if len(msg.content) > MAX_MESSAGE_CHARS:
                 raise ValueError(
@@ -122,6 +123,7 @@ class MessageResponse(BaseModel):
     status: Literal["done", "streaming", "error", "interrupted"]
     error_code: Optional[str] = None
     error_message: Optional[str] = None
+    attachments: list[AttachmentInfo] = Field(default_factory=list)
     created_at: str
 
 
@@ -135,5 +137,8 @@ class SendOnlineMessageResponse(BaseModel):
     """POST /api/sessions/{session_id}/messages 成功响应模型。"""
 
     task_id: str
-    message_id: str
+    session_id: str
+    user_message_id: str
+    assistant_message_id: str
+    attachments: list[AttachmentInfo] = Field(default_factory=list)
     status: Literal["running"] = "running"

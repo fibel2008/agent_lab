@@ -68,6 +68,13 @@
     <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
       <polyline points="20 6 9 17 4 12"></polyline>
     </symbol>
+    <symbol id="icon-paperclip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+    </symbol>
+    <symbol id="icon-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+      <polyline points="14 2 14 8 20 8"></polyline>
+    </symbol>
   </svg>
 
   <a class="skip-link" href="#main-content">跳到主内容</a>
@@ -124,7 +131,21 @@
             </button>
           </div>
         </aside>
-        <div class="chat" id="chat-main">
+        <div class="chat" id="chat-panel">
+          <div class="chat-drag-overlay" id="chat-drag-overlay" hidden>
+            <div class="chat-drag-card">
+              <div class="chat-drag-card__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><use href="#icon-paperclip"></use></svg>
+              </div>
+              <h3 class="chat-drag-card__title">拖入此处添加附件</h3>
+              <p class="chat-drag-card__desc">支持格式：图片 (.png/.jpg/.jpeg/.webp)、文档 (.docx/.xlsx/.pptx/.pdf)、文本/代码 (.txt/.md/.py 等)</p>
+              <div class="chat-drag-card__specs">
+                <span class="chat-drag-card__spec">单文件不超过 5MB</span>
+                <span class="chat-drag-card__divider">·</span>
+                <span class="chat-drag-card__spec">单条消息最多 3 个附件</span>
+              </div>
+            </div>
+          </div>
           <div class="chat-banner" id="chat-banner" role="alert" hidden>
             <span class="chat-banner__text" id="chat-banner-text"></span>
             <button class="chat-banner__close" id="chat-banner-close" type="button" aria-label="关闭提示">×</button>
@@ -142,13 +163,24 @@
           <div class="chat__composer">
             <p class="composer__queue" id="composer-queue" hidden></p>
             <form class="composer" id="composer">
+              <div class="pending-attachments" id="pending-attachments" hidden></div>
               <div class="composer__row">
+                <button class="composer__attach" id="attach-btn" type="button" aria-label="添加附件" title="添加附件">
+                  <svg viewBox="0 0 24 24"><use href="#icon-paperclip"></use></svg>
+                </button>
+                <input
+                  type="file"
+                  id="file-input"
+                  multiple
+                  style="display: none;"
+                  accept=".png,.jpg,.jpeg,.webp,.docx,.xlsx,.pptx,.pdf,.md,.txt,.py,.js,.ts,.json,.html,.css,.java,.c,.cpp,.go,.sh,.yaml,.sql"
+                >
                 <textarea
                   class="composer__input"
                   id="composer-input"
                   rows="1"
                   maxlength="4000"
-                  placeholder="给 Emibot 发送消息..."
+                  placeholder="发送消息..."
                   aria-label="输入消息"
                 ></textarea>
                 <button
@@ -180,6 +212,17 @@
       <div class="modal__actions">
         <button class="modal__btn modal__btn--cancel" id="delete-modal-cancel" type="button">取消</button>
         <button class="modal__btn modal__btn--danger" id="delete-modal-confirm" type="button">删除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 通用深色模态提示弹窗 (B1.13.2 / B1.14.1) -->
+  <div class="modal-backdrop" id="alert-modal" role="dialog" aria-modal="true" aria-labelledby="alert-modal-title" aria-describedby="alert-modal-desc" hidden>
+    <div class="modal">
+      <h3 class="modal__title" id="alert-modal-title">无法添加附件</h3>
+      <p class="modal__desc" id="alert-modal-desc"></p>
+      <div class="modal__actions">
+        <button class="modal__btn modal__btn--primary" id="alert-modal-ok" type="button">我知道了</button>
       </div>
     </div>
   </div>

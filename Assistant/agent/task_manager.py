@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import datetime
+import inspect
 import logging
 import time
 from typing import Any, AsyncIterator, Literal, Optional
@@ -41,6 +42,7 @@ class GenerationTask:
         self.error_code: Optional[str] = None
         self.error_message: Optional[str] = None
         self.final_content: str = ""
+        self.current_step_status: Optional[dict[str, Any]] = None
 
 
 class TaskManager:
@@ -67,6 +69,7 @@ class TaskManager:
         session_id: str,
         user_content: str,
         store: SessionStore,
+        attachments: Optional[list[dict]] = None,
     ) -> GenerationTask:
         """启动后台生成任务并在数据库原子写入 turn 与 task 记录。"""
         async with self._lock:
@@ -89,7 +92,7 @@ class TaskManager:
             )
             self._tasks[session_id] = task
 
-        # 在异步写事务中原子落盘用户消息、助手占位消息与任务记录
+        # 在异步写事务中原子落盘用户消息、附件、助手占位消息与任务记录
         try:
             await store.create_turn_and_task(
                 session_id=session_id,
@@ -97,6 +100,7 @@ class TaskManager:
                 user_content=user_content,
                 assistant_msg_id=assistant_msg_id,
                 task_id=task_id,
+                attachments=attachments,
             )
         except Exception as exc:
             async with self._lock:
@@ -133,13 +137,25 @@ class TaskManager:
         last_flush_time = time.perf_counter()
         unflushed_count = 0
 
+        # 定义给 ReAct / 工具过程广播的回调
+        def on_event(event_type: str, data: dict[str, Any]) -> None:
+            self._broadcast(task, event_type, data)
+
         try:
             # 1. 严格从数据库构建带过滤与交叉序列的上下文
             context_messages = await build_context_messages(session_id, store)
             agent = get_agent("online")
 
-            # 2. 逐块流式生成
-            async for chunk in agent.stream_reply(context_messages):
+            # 2. 逐块流式生成（支持 on_event 回调驱动工具状态广播）
+            sig = inspect.signature(agent.stream_reply)
+            if "on_event" in sig.parameters:
+                reply_stream = agent.stream_reply(
+                    context_messages, on_event=on_event, session_id=session_id
+                )
+            else:
+                reply_stream = agent.stream_reply(context_messages)
+
+            async for chunk in reply_stream:
                 accumulated_chunks.append(chunk)
                 task.chunk_buffer.append(chunk)
                 unflushed_count += 1
@@ -272,6 +288,8 @@ class TaskManager:
 
     def _broadcast(self, task: GenerationTask, event_type: str, data: dict[str, Any]) -> None:
         """向当前任务的所有订阅客户端广播事件。"""
+        if event_type == "step_status":
+            task.current_step_status = data
         for queue in list(task.subscribers):
             try:
                 queue.put_nowait((event_type, data))
@@ -360,7 +378,10 @@ class TaskManager:
                 },
             )
 
-            # 2. 追赶机制：一次性下发当前任务累积的全部增量文本
+            # 2. 追赶机制：若已有规划步骤状态，下发当前步骤；一次性下发当前任务累积的全部增量文本
+            if getattr(task, "current_step_status", None):
+                yield ("step_status", task.current_step_status)
+
             caught_up_text = "".join(task.chunk_buffer)
             if caught_up_text:
                 yield ("delta", {"text": caught_up_text})
