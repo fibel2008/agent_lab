@@ -1370,14 +1370,16 @@ status: Literal["running", "completed", "interrupted", "failed"]
 - 需求描述：Agent 执行过程中明确展示规划与执行步骤，包括“正在思考”、“正在调用工具: xxx”、“正在生成回复”等状态，不再只隐蔽展示工具；离线形态发送带附件消息时，将附件安全存入临时缓存，Mock 给出文字反馈。
 - 详细方案设计：
   1. ReAct 循环与规划步骤状态广播（`Assistant/agent/react.py` 与 `task_manager.py`）：
-     - 在 Agent 执行生命周期中，通过 `step_status`（与既有 `tool_start`、`tool_done`）事件向前端全链路推送明确的 Agent 规划步骤：
+     - 彻底废弃旧的 `tool_start` 专用附件文案（“正在读取附件 xxx...”）与旧胶囊；
+     - 在 Agent 执行生命周期中，全链路统一使用 `step_status` 事件向前端推送明确的 Agent 规划步骤：
        ① **进入思考/规划阶段**：在调用 LLM 决策前，广播 `event: step_status\ndata: {"status": "thinking", "text": "正在思考..."}\n\n`；
-       ② **调用工具阶段**：当 LLM 返回 `tool_calls` 时，广播 `event: step_status\ndata: {"status": "calling_tool", "tool": tool_name, "text": "正在调用工具: " + tool_name + "..."}\n\n`（同时广播 `tool_start` 携带 `attachment_name` 等详细参数）；
+       ② **调用工具阶段**：当 LLM 返回 `tool_calls` 时，广播 `event: step_status\ndata: {"status": "calling_tool", "tool": tool_name, "text": "正在调用工具: " + tool_name + "..."}\n\n`；
        ③ **工具调用完成**：广播 `tool_done`；
        ④ **生成最终回复阶段**：当模型决定结束工具调用或无工具调用、开始吐出回复内容时，广播 `event: step_status\ndata: {"status": "generating", "text": "正在生成回复..."}\n\n`；随后以 `delta` 逐块推送正文内容；
   2. 前端规划步骤状态指示器组件（`views/chat.js` 与 `chat.css`）：
-     - 升级气泡等待指示区为规划步骤指示器 `.agent-step-status`，替代单一三点等待：
-       - 显示当前步骤状态（“正在思考...”、“正在调用工具: xxx...”、“正在生成回复...”）与动态微动图标；
+     - 彻底删除原 `.msg__tool-capsule` 旧工具胶囊 DOM 与样式；
+     - 升级气泡等待指示区为统一规划步骤指示器 `.agent-step-status`：
+       - 明确显示当前步骤状态（“正在思考...”、“正在调用工具: xxx...”、“正在生成回复...”）与动态微动图标；
        - 当收到新的 `step_status` 事件时，平滑更新状态文字与图标；
        - 当收到首个 `delta` 或正文开始输出后，生成状态平滑过渡，确保最终回复 Markdown 清晰展示；
        - 生成完成（`done`）后，规划步骤收拢为完成状态；
