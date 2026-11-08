@@ -1048,7 +1048,8 @@ status: Literal["running", "completed", "interrupted", "failed"]
 1. 新建对话：在线形态同样采用"延迟创建草稿态"（A6.4）；点击"新建对话"仅进入空白草稿态，只有在用户成功发出首条消息后，才调用 `POST /api/sessions` 正式落库并进入列表；
 2. 自动标题：首条消息发出时，依然严格采用 A6.5 算法（空白折叠与 Unicode 10 字符感知切片截取），落库并展示在列表；
 3. 行内重命名：保留悬停笔图标、行内 input 编辑、防失焦重复提交与输入法组合保护（A6.6），保存时调用 `PATCH /api/sessions/{id}` 同步更新本地数据库；
-4. 删除会话：保留悬停垃圾桶图标（A6.7），点击后调用 `DELETE /api/sessions/{id}` 同步清除本地持久化，当前会话被删后同样安全回退至空白草稿态。
+4. 删除会话：保留悬停垃圾桶图标（A6.7），点击后调用 `DELETE /api/sessions/{id}` 同步清除本地持久化，当前会话被删后同样安全回退至空白草稿态；
+5. 响应式布局与屏幕适配（A6.3/A6.6/A6.7 适配补强）：会话侧栏直属子容器（`.chat-sessions__header`、`.chat-sessions__list`、`.chat-sessions__footer`）与列表条目（`.session-item`）宽度一律设为 `width: 100%` 并配置 `box-sizing: border-box`，自适应小屏断点（180px）与视口收窄，杜绝固定 240px 导致的右侧虚线边框、收起按钮与操作按钮截断溢出；条目处于激活态（`.session-item.is-active`）时常驻展示重命名与删除按钮，长标题在操作按钮左侧自适应 ellipsis 省略号截断，杜绝吞字并保障移动/触屏端无 hover 即可直接操作。
 
 **B1_9_2 全会话未发送草稿在双形态下的统一页面内存管理**
 

@@ -33,6 +33,7 @@
 2026-11-07：完成第二版 `feature/chat-ux-enhancements` 分支开发（B1.10、B1.11、B1.12）：1) 零依赖安全 DOM 级 markdown.js 实现，严格杜绝 innerHTML，在线 Agent 消息实时流式渲染与历史回显全 Markdown 排版，流式逐字打字机光标自适应，离线与用户消息保持纯文本；2) 实现删除会话自定义深色二次确认模态弹窗（.modal-backdrop 与 .modal），拦截会话列表删除，动态展示会话标题，支持取消、空白遮罩点击、Escape 快捷键关闭及确认删除流转；3) 实现消息气泡底部弹性元信息栏（.msg__meta），双形态每条消息均挂载纯文本一键复制按钮，流式中安全隐藏，复制成功后提供 1.5s 勾选高亮反馈与隐藏 textarea 降级机制。
 2026-11-07：完成 Spec.md 对齐 Intent.md B1.13 到 B1.15（对话附件、图片模型视觉校验拦截与首个工具 read_attachment）的架构与详细方案设计：确立多源添加（按钮/拖拽/Ctrl+V）、格式白名单、5MB 与 3 个上限整批拒绝拦截、在线专属目录持久化与会话级联清理、Windows 默认应用外部调起（os.startfile）、发送时模型视觉探测与 400 阻断（清空附件保留文字）、read_attachment 工具在统一注册中心注册、10,000 字符安全截断、扫描版与损坏文件错误降级，以及 ReAct tool_start/tool_done 过程广播与离线 Mock 文字反馈；并在功能分支表中规划分支 9 feature/attachments-and-tools。
 2026-11-08：完成第二版 `feature/attachments-and-tools` 分支开发（B1.13、B1.14、B1.15）：1) 实现多源附件录入（按钮/拖拽/剪贴板截图）、格式白名单校验、单文件 5MB 与整批 3 个上限深色弹窗整批拒绝拦截；2) 实现在线专属目录物理落盘（data/attachments/{session_id}/）、SQLite attachments 表外键级联与会话物理删除联动；3) 实现图片 180x180 缩略图预览（GET /preview）与点击调起 Windows 默认关联应用（POST /open -> os.startfile，404 弹窗提示）；4) 实现发送时模型视觉能力轻量探测与内存缓存，不支持时 400 拦截、弹窗警示、清空全部附件并保留输入框文字；5) 正式注册首个工具 read_attachment，实现 docx/xlsx/pptx/pdf/text/code 专用解析器、10,000 字符截断安全防线、扫描版与损坏文件错误降级，以及会话沙箱权限强隔离；6) 完善 ReAct 多轮循环与 tool_start / tool_done SSE 实时广播，前端动态展示状态胶囊组件，离线 Mock 直出确定性文字反馈。全量 39 项测试 100% 通过。
+36: 2026-11-08：修复 A6.2-A6.7 窄屏屏幕适配与输入区占位文字折行缺陷：1) 修复会话侧栏子容器（header/list/footer）硬编码 240px 宽度导致的移动断点（180px）右侧截断缺陷，统一重构为 width: 100% 与 box-sizing，新建对话虚线边框、收起按钮与条目删除/重命名操作组完整可见且支持顺畅点击；2) 会话条目采用 width: 100%，标题在操作按钮左侧自适应 ellipsis 省略号截断，杜绝长文本贴右边界吞字；激活条目（.session-item.is-active）常驻显示操作按钮，优化触屏与窄屏无 hover 场景体验；3) 底部输入框占位文字从"给 Emibot 发送消息..."精简为"发送消息..."，字号保持不变，配合 CSS white-space: nowrap 与 text-overflow: ellipsis 彻底根除两行挤压截断与原生垂直滚动条；4) 完成 Headless Edge CDP 自动化端到端测试与冒烟验证，全量 39 项后端单元测试持续 100% 通过。
 
 ## 2. 已做决定及理由
 
@@ -87,6 +88,8 @@
 2.49 2026-11-07 工具调用全链路引入 SSE `tool_start` 与 `tool_done` 事件驱动前端状态胶囊。理由：满足 B1.15“界面展示调用过程”规范，使后台推理与工具执行状态对用户透明可见。
 2.50 2026-11-08 表单解析多附件统一以 `hasattr(item, 'filename') and item.filename` 判定提取。理由：FastAPI 0.115+ 内部继承树中 `request.form()` 返回 `starlette.datastructures.UploadFile`，使用 `isinstance(item, fastapi.UploadFile)` 会因逆向子类继承判定为 False 从而过滤掉所有上传文件。
 2.51 2026-11-08 异步单元测试环境下的后台异步生成任务在 tearDown 时统一执行 `await task_manager.shutdown()`。理由：在测试断言退出后后台异步协程若仍在写入临时 SQLite 数据库或持有临时目录文件句柄，在 Windows 平台上会引发文件占用锁导致测试环境清理报 WinError 32 异常。
+2.52 2026-11-08 会话列表侧栏内部子容器与条目统一采用 width: 100% 与 box-sizing: border-box，并在激活态（.is-active）常驻显示操作按钮。理由：父容器在移动断点（< 768px）自适应为 180px，若子容器固定 240px 会因 overflow: hidden 将右边缘边框与操作按钮裁剪吞没；激活态常驻按钮使触屏与窄屏用户无需鼠标悬停即可直接点击重命名或删除。
+2.53 2026-11-08 底部输入框占位文字精简为"发送消息..."并在样式层配置单行省略保护。理由：窄屏模式下附件按钮、发送按钮与文本域左右 padding 使得可用宽度狭窄，长文案容易折为两行被输入框下边缘硬生生截断并触发非预期垂直滚动条；精简文字不改字号既符合业界主流体验又彻底根除折行截断。
 
 ## 3. 踩过的坑
 
@@ -100,6 +103,7 @@
 3.8 2026-11-06 通过 document.createElement('svg') 动态创建节点会生成 HTMLUnknownElement 而不是 SVGElement，导致浏览器不解析其命名空间及内部 <use> 引用，使重命名和删除图标完全不渲染（表现为空白/透明）；通过在 dom.js 的 el 工具函数中增加 SVG 标签集判断并使用 document.createElementNS(SVG_NS, tagName) 以及在业务中统一使用 createSvgIcon，彻底修复图标隐形透明问题。
 3.9 2026-11-06 Headless Edge 启动时若未指定 --user-data-dir 与 --disable-extensions，浏览器会自动加载用户宿主环境中的全部插件背景页，导致 CDP /json 接口返回的首个 target 为扩展页面从而引发 evaluate 节点未命中；且 ES Module 异步加载特性使得 DOM 节点先行渲染而脚本逻辑尚未挂载。通过在自动化测试中指定隔离临时用户目录、禁用扩展，并在 main.js 末尾标记 window.__emibot_ready 显式等待挂载完成，彻底解决浏览器端自动化测试的竞态假失败问题。
 3.10 2026-11-08 FastAPI 0.115+ 与 Starlette 的 UploadFile 并非双向同构类，Starlette 生成的 UploadFile 对象不是 FastAPI UploadFile 的实例，导致严格类型检查失效；通过鸭子类型 `hasattr(item, 'filename')` 实现稳健防御。
+3.11 2026-11-08 弹性侧栏若仅对父容器配置响应式宽度（如 180px）而内部直属子容器（header、list、footer）保留了原始固定设计宽度（240px），配合外层 overflow: hidden 会导致右侧内容无声截断达 60px 之多，且长标题因未在内部弹性容器受约束而贴边硬截断、最右侧操作按钮完全落入不可见死区；所有纵向列表的直属子容器均应显式声明 width: 100% 与 box-sizing: border-box。
 
 ## 4. 下一步
 
