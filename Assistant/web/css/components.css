@@ -377,3 +377,13 @@
 .modal__btn--danger:hover {
   filter: brightness(1.1);
 }
+
+.modal__btn--primary {
+  background-color: var(--color-primary);
+  border: 1px solid transparent;
+  color: #ffffff;
+}
+
+.modal__btn--primary:hover {
+  background-color: var(--color-primary-hover);
+}

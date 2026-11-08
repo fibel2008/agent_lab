@@ -62,18 +62,48 @@ export async function fetchOnlineMessages(sessionId) {
   return await response.json();
 }
 
-export async function sendOnlineMessage(sessionId, content) {
+export async function sendOnlineMessage(sessionId, content, files = []) {
+  let body;
+  let headers = {};
+
+  if (files && files.length > 0) {
+    const formData = new FormData();
+    formData.append('content', content || '');
+    for (const file of files) {
+      formData.append('files', file);
+    }
+    body = formData;
+  } else {
+    headers['Content-Type'] = 'application/json';
+    body = JSON.stringify({ content });
+  }
+
   const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ content }),
+    headers,
+    body,
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    const error = new Error(err.message || err.detail || `发送消息失败: HTTP ${response.status}`);
+    error.status = response.status;
+    error.code = err.code || `HTTP_${response.status}`;
+    error.payload = err;
+    throw error;
+  }
+  return await response.json();
+}
+
+export async function openAttachment(attachmentId) {
+  const response = await fetch(`/api/attachments/${encodeURIComponent(attachmentId)}/open`, {
+    method: 'POST',
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    const error = new Error(err.detail || `发送消息失败: HTTP ${response.status}`);
+    const error = new Error(err.message || err.detail || `打开文件失败: HTTP ${response.status}`);
     error.status = response.status;
+    error.code = err.code || `HTTP_${response.status}`;
     throw error;
   }
   return await response.json();
@@ -98,6 +128,8 @@ export async function subscribeChatStream(sessionId, {
   signal,
   onMeta,
   onDelta,
+  onToolStart,
+  onToolDone,
   onDone,
   onError,
 }) {
@@ -137,7 +169,7 @@ export async function subscribeChatStream(sessionId, {
     return;
   }
 
-  await readSSEStream(response, signal, { onMeta, onDelta, onDone, onError });
+  await readSSEStream(response, signal, { onMeta, onDelta, onToolStart, onToolDone, onDone, onError });
 }
 
 export async function streamChat({
@@ -145,6 +177,8 @@ export async function streamChat({
   signal,
   onMeta,
   onDelta,
+  onToolStart,
+  onToolDone,
   onDone,
   onError,
 }) {
@@ -164,7 +198,7 @@ export async function streamChat({
     }
     onError?.({
       code: 'network_error',
-      message: networkError.message || '网络连接失败，请确认后端服务正在运行',
+      message: networkError.message || '网络连接失败，请检查服务状态',
     });
     return;
   }
@@ -179,7 +213,7 @@ export async function streamChat({
           : JSON.stringify(errJson.detail);
       }
     } catch {
-      // 无法解析 JSON 则保留 HTTP 状态码
+      // 保留状态码
     }
     onError?.({
       code: `http_${response.status}`,
@@ -188,49 +222,46 @@ export async function streamChat({
     return;
   }
 
-  await readSSEStream(response, signal, { onMeta, onDelta, onDone, onError });
+  await readSSEStream(response, signal, { onMeta, onDelta, onToolStart, onToolDone, onDone, onError });
 }
 
-async function readSSEStream(response, signal, { onMeta, onDelta, onDone, onError }) {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    onError?.({
-      code: 'stream_unsupported',
-      message: '浏览器不支持响应流式读取',
-    });
-    return;
-  }
-
+async function readSSEStream(response, signal, { onMeta, onDelta, onToolStart, onToolDone, onDone, onError }) {
+  const reader = response.body.getReader();
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
 
   try {
     while (true) {
+      if (signal?.aborted) {
+        try {
+          await reader.cancel();
+        } catch (_) {}
+        return;
+      }
+
       const { done, value } = await reader.read();
       if (done) {
-        buffer += decoder.decode();
         break;
       }
+
       buffer += decoder.decode(value, { stream: true });
 
-      // SSE 事件以两个换行符分隔
-      let boundaryIndex;
-      while ((boundaryIndex = buffer.indexOf('\n\n')) !== -1) {
-        const eventChunk = buffer.slice(0, boundaryIndex).trim();
-        buffer = buffer.slice(boundaryIndex + 2);
+      // 按双换行分割事件块（同时兼容 CRLF 与 LF）
+      const events = buffer.split(/\r?\n\r?\n/);
+      buffer = events.pop() || '';
 
-        if (!eventChunk) {
-          continue;
+      for (const eventChunk of events) {
+        const trimmed = eventChunk.trim();
+        if (trimmed) {
+          parseAndDispatchEvent(trimmed, { onMeta, onDelta, onToolStart, onToolDone, onDone, onError });
         }
-
-        parseAndDispatchEvent(eventChunk, { onMeta, onDelta, onDone, onError });
       }
     }
 
     // 处理流结束时缓冲区可能剩余的最后一个事件块
     const remaining = buffer.trim();
     if (remaining) {
-      parseAndDispatchEvent(remaining, { onMeta, onDelta, onDone, onError });
+      parseAndDispatchEvent(remaining, { onMeta, onDelta, onToolStart, onToolDone, onDone, onError });
     }
   } catch (readError) {
     if (signal?.aborted) {
@@ -243,7 +274,7 @@ async function readSSEStream(response, signal, { onMeta, onDelta, onDone, onErro
   }
 }
 
-function parseAndDispatchEvent(chunk, { onMeta, onDelta, onDone, onError }) {
+function parseAndDispatchEvent(chunk, { onMeta, onDelta, onToolStart, onToolDone, onDone, onError }) {
   const lines = chunk.split('\n');
   let eventType = 'message';
   let dataLines = [];
@@ -275,6 +306,12 @@ function parseAndDispatchEvent(chunk, { onMeta, onDelta, onDone, onError }) {
       break;
     case 'delta':
       onDelta?.(payload);
+      break;
+    case 'tool_start':
+      onToolStart?.(payload);
+      break;
+    case 'tool_done':
+      onToolDone?.(payload);
       break;
     case 'done':
       onDone?.(payload);

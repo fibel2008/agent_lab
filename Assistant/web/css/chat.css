@@ -768,3 +768,229 @@
     width: 180px;
   }
 }
+
+/* 附件交互与呈现样式 (B1.13 - B1.15) */
+
+/* 拖拽进入高亮边框 */
+.composer.is-dragover {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 3px var(--color-primary-softer) !important;
+  background-color: var(--color-surface-hover) !important;
+}
+
+/* 添加附件回形针按钮 */
+.composer__attach {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color var(--motion-fast), background-color var(--motion-fast);
+}
+
+.composer__attach svg {
+  width: 18px;
+  height: 18px;
+}
+
+.composer__attach:hover {
+  color: var(--color-primary);
+  background-color: var(--color-surface-hover);
+}
+
+/* 待发送附件容器 */
+.pending-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.pending-attachments[hidden] {
+  display: none !important;
+}
+
+/* 待发送附件胶囊条目 */
+.pending-attachment-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background-color: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  max-width: 240px;
+  font-size: 12px;
+  user-select: none;
+}
+
+.pending-attachment-item__icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--color-primary);
+}
+
+.pending-attachment-item__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  color: var(--color-text);
+}
+
+.pending-attachment-item__size {
+  color: var(--color-text-dim);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.pending-attachment-item__remove {
+  background: transparent;
+  border: none;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  margin-left: 2px;
+  border-radius: 2px;
+  transition: color var(--motion-fast);
+}
+
+.pending-attachment-item__remove:hover {
+  color: var(--color-danger);
+}
+
+/* 消息气泡内的附件列表 */
+.msg__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* 附件卡片通用样式 */
+.attachment-card {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface-soft);
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast), transform var(--motion-fast);
+  overflow: hidden;
+  user-select: none;
+}
+
+.attachment-card:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 2px 10px rgba(91, 164, 212, 0.25);
+}
+
+/* 图片附件卡片 */
+.attachment-card--image {
+  display: inline-flex;
+  flex-direction: column;
+  max-width: 180px;
+}
+
+.attachment-card__thumb {
+  max-width: 180px;
+  max-height: 180px;
+  object-fit: cover;
+  display: block;
+  border-radius: calc(var(--radius-sm) - 1px);
+  transition: transform var(--motion-fast);
+}
+
+.attachment-card--image:hover .attachment-card__thumb {
+  transform: scale(1.02);
+}
+
+/* 非图片文件卡片 */
+.attachment-card--file {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  min-width: 180px;
+  max-width: 260px;
+}
+
+.attachment-card__icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  color: var(--color-primary);
+}
+
+.attachment-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.attachment-card__name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-all;
+  line-height: 1.35;
+}
+
+.attachment-card__size {
+  font-size: 11px;
+  color: var(--color-text-dim);
+}
+
+/* ReAct 工具执行过程胶囊组件 (B1.15) */
+.msg__tool-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background-color: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+}
+
+.msg__tool-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-primary);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: tool-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.msg__tool-capsule.is-done .msg__tool-spinner {
+  display: none;
+}
+
+.msg__tool-capsule.is-done {
+  border-color: var(--color-border);
+  opacity: 0.85;
+}
+
+@keyframes tool-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
