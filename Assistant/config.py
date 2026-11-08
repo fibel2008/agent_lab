@@ -112,6 +112,11 @@ ATTACHMENT_DIR: Path = Path(
     or (Path(__file__).resolve().parent.parent / "data" / "attachments")
 ).resolve()
 
+ATTACHMENT_CACHE_DIR: Path = Path(
+    os.environ.get("ASSISTANT_ATTACHMENT_CACHE_DIR", "").strip()
+    or (Path(__file__).resolve().parent.parent / "data" / "cache" / "attachments")
+).resolve()
+
 MAX_ATTACHMENT_COUNT: int = 3
 MAX_ATTACHMENT_SIZE: int = 5 * 1024 * 1024  # 5MB
 ATTACHMENT_TEXT_TRUNCATE_LIMIT: int = 10000
