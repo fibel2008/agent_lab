@@ -153,8 +153,6 @@ export async function subscribeChatStream(sessionId, {
   onMeta,
   onStepStatus,
   onDelta,
-  onToolStart,
-  onToolDone,
   onDone,
   onError,
 }) {
@@ -194,7 +192,7 @@ export async function subscribeChatStream(sessionId, {
     return;
   }
 
-  await readSSEStream(response, signal, { onMeta, onStepStatus, onDelta, onToolStart, onToolDone, onDone, onError });
+  await readSSEStream(response, signal, { onMeta, onStepStatus, onDelta, onDone, onError });
 }
 
 export async function streamChat({
@@ -203,8 +201,6 @@ export async function streamChat({
   onMeta,
   onStepStatus,
   onDelta,
-  onToolStart,
-  onToolDone,
   onDone,
   onError,
 }) {
@@ -248,10 +244,10 @@ export async function streamChat({
     return;
   }
 
-  await readSSEStream(response, signal, { onMeta, onStepStatus, onDelta, onToolStart, onToolDone, onDone, onError });
+  await readSSEStream(response, signal, { onMeta, onStepStatus, onDelta, onDone, onError });
 }
 
-async function readSSEStream(response, signal, { onMeta, onStepStatus, onDelta, onToolStart, onToolDone, onDone, onError }) {
+async function readSSEStream(response, signal, { onMeta, onStepStatus, onDelta, onDone, onError }) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
@@ -279,7 +275,7 @@ async function readSSEStream(response, signal, { onMeta, onStepStatus, onDelta, 
       for (const eventChunk of events) {
         const trimmed = eventChunk.trim();
         if (trimmed) {
-          parseAndDispatchEvent(trimmed, { onMeta, onStepStatus, onDelta, onToolStart, onToolDone, onDone, onError });
+          parseAndDispatchEvent(trimmed, { onMeta, onStepStatus, onDelta, onDone, onError });
         }
       }
     }
@@ -287,7 +283,7 @@ async function readSSEStream(response, signal, { onMeta, onStepStatus, onDelta, 
     // 处理流结束时缓冲区可能剩余的最后一个事件块
     const remaining = buffer.trim();
     if (remaining) {
-      parseAndDispatchEvent(remaining, { onMeta, onStepStatus, onDelta, onToolStart, onToolDone, onDone, onError });
+      parseAndDispatchEvent(remaining, { onMeta, onStepStatus, onDelta, onDone, onError });
     }
   } catch (readError) {
     if (signal?.aborted) {
@@ -300,7 +296,7 @@ async function readSSEStream(response, signal, { onMeta, onStepStatus, onDelta, 
   }
 }
 
-function parseAndDispatchEvent(chunk, { onMeta, onStepStatus, onDelta, onToolStart, onToolDone, onDone, onError }) {
+function parseAndDispatchEvent(chunk, { onMeta, onStepStatus, onDelta, onDone, onError }) {
   const lines = chunk.split('\n');
   let eventType = 'message';
   let dataLines = [];
@@ -337,10 +333,8 @@ function parseAndDispatchEvent(chunk, { onMeta, onStepStatus, onDelta, onToolSta
       onDelta?.(payload);
       break;
     case 'tool_start':
-      onToolStart?.(payload);
-      break;
     case 'tool_done':
-      onToolDone?.(payload);
+      // 已统一由 step_status 呈现，忽略旧事件
       break;
     case 'done':
       onDone?.(payload);

@@ -13,7 +13,6 @@ from Assistant.agent.errors import LLMError
 from Assistant.agent.llm_client import LLMClient
 from Assistant.agent.tools.base import ToolCall
 from Assistant.agent.tools.registry import ToolRegistry, tool_registry
-from Assistant.storage.session_store import session_store
 
 logger = logging.getLogger("assistant.react")
 
@@ -170,14 +169,6 @@ class ReActLoop:
                     else:
                         args = raw_args or {}
 
-                    # 提取附件名称用于状态文案展示
-                    filename = args.get("attachment_id", "未知附件")
-                    if tool_name == "read_attachment":
-                        att_id = args.get("attachment_id", "")
-                        att_record = await session_store.get_attachment(att_id)
-                        if att_record:
-                            filename = att_record["filename"]
-
                     # 决定调用工具时广播 step_status
                     if on_event:
                         on_event(
@@ -186,15 +177,6 @@ class ReActLoop:
                                 "status": "calling_tool",
                                 "tool": tool_name,
                                 "text": f"正在调用工具: {tool_name}...",
-                            },
-                        )
-                        # 兼容原有 tool_start 广播
-                        on_event(
-                            "tool_start",
-                            {
-                                "tool": tool_name,
-                                "attachment_name": filename,
-                                "status_text": f"正在读取附件 {filename}...",
                             },
                         )
 

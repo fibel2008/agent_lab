@@ -1086,45 +1086,6 @@
   color: var(--color-text-dim);
 }
 
-/* ReAct 工具执行过程胶囊组件 (B1.15) */
-.msg__tool-capsule {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
-  background-color: var(--color-surface-soft);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  margin-bottom: 8px;
-}
-
-.msg__tool-spinner {
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--color-primary);
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: tool-spin 0.8s linear infinite;
-  flex-shrink: 0;
-}
-
-.msg__tool-capsule.is-done .msg__tool-spinner {
-  display: none;
-}
-
-.msg__tool-capsule.is-done {
-  border-color: var(--color-border);
-  opacity: 0.85;
-}
-
-@keyframes tool-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 /* Agent 规划步骤指示器组件 (思考 / 工具调用 / 生成) */
 .agent-step-status {
   display: inline-flex;

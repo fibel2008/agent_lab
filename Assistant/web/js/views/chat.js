@@ -1526,60 +1526,6 @@ function subscribeOnlineSession(sessionId, messageId) {
         }
       }
     },
-    onToolStart(data) {
-      // 监听到 ReAct 工具调用开始，展示胶囊 (B1.15.3)
-      if (getActiveSessionId() === sessionId && messagesEl) {
-        const cardNode = messagesEl.querySelector(
-          `[data-message-id="${messageId}"]`,
-        );
-        if (cardNode) {
-          const waitingEl = cardNode.querySelector('.msg__waiting');
-          if (waitingEl) waitingEl.remove();
-
-          const bubble = cardNode.querySelector('.msg__bubble');
-          if (bubble) {
-            let capsule = bubble.querySelector('.msg__tool-capsule');
-            if (!capsule) {
-              capsule = el('div', { className: 'msg__tool-capsule' }, [
-                el('span', { className: 'msg__tool-spinner' }),
-                el('span', {
-                  className: 'msg__tool-label',
-                  text: data?.status_text || `正在读取附件 ${data?.attachment_name || ''}...`,
-                }),
-              ]);
-              const textEl = bubble.querySelector('.msg__text');
-              if (textEl) {
-                bubble.insertBefore(capsule, textEl);
-              } else {
-                bubble.appendChild(capsule);
-              }
-            } else {
-              const labelEl = capsule.querySelector('.msg__tool-label');
-              if (labelEl) {
-                labelEl.textContent = data?.status_text || `正在读取附件 ${data?.attachment_name || ''}...`;
-              }
-            }
-            if (shouldAutoScroll && chatScrollEl) {
-              scrollToBottom(chatScrollEl);
-            }
-          }
-        }
-      }
-    },
-    onToolDone(data) {
-      // 监听到 ReAct 工具调用完成，标记胶囊 (B1.15.3)
-      if (getActiveSessionId() === sessionId && messagesEl) {
-        const cardNode = messagesEl.querySelector(
-          `[data-message-id="${messageId}"]`,
-        );
-        if (cardNode) {
-          const capsule = cardNode.querySelector('.msg__tool-capsule');
-          if (capsule) {
-            capsule.classList.add('is-done');
-          }
-        }
-      }
-    },
     onDelta({ text }) {
       if (!text) return;
       const msg = findMessageInSession(sessionId, messageId);
