@@ -32,6 +32,7 @@
 2026-11-06：完成第二版 `feature/generation-decoupling` 分支开发：实现全局后台任务管理器 TaskManager、POST /api/sessions/{id}/messages 触发异步生成、会话级 SSE 订阅 GET /api/chat/stream、追赶式增量广播、POST /api/chat/abort 主动中断与安全落盘、409 防并发穿透、单会话严格串行与跨会话并发独立、切页切会话无缝重连、模式切换生成中断（B1_1_3）与应用级优雅停服（lifespan TaskManager 取消收尾与落盘）。通过 21 项全量单元测试与 Headless Edge CDP 浏览器自动化端到端测试。第二版 B1.0 全部 9 个核心能力与 Spec 拆解项全部完成并闭环。
 2026-11-07：完成第二版 `feature/chat-ux-enhancements` 分支开发（B1.10、B1.11、B1.12）：1) 零依赖安全 DOM 级 markdown.js 实现，严格杜绝 innerHTML，在线 Agent 消息实时流式渲染与历史回显全 Markdown 排版，流式逐字打字机光标自适应，离线与用户消息保持纯文本；2) 实现删除会话自定义深色二次确认模态弹窗（.modal-backdrop 与 .modal），拦截会话列表删除，动态展示会话标题，支持取消、空白遮罩点击、Escape 快捷键关闭及确认删除流转；3) 实现消息气泡底部弹性元信息栏（.msg__meta），双形态每条消息均挂载纯文本一键复制按钮，流式中安全隐藏，复制成功后提供 1.5s 勾选高亮反馈与隐藏 textarea 降级机制。
 2026-11-07：完成 Spec.md 对齐 Intent.md B1.13 到 B1.15（对话附件、图片模型视觉校验拦截与首个工具 read_attachment）的架构与详细方案设计：确立多源添加（按钮/拖拽/Ctrl+V）、格式白名单、5MB 与 3 个上限整批拒绝拦截、在线专属目录持久化与会话级联清理、Windows 默认应用外部调起（os.startfile）、发送时模型视觉探测与 400 阻断（清空附件保留文字）、read_attachment 工具在统一注册中心注册、10,000 字符安全截断、扫描版与损坏文件错误降级，以及 ReAct tool_start/tool_done 过程广播与离线 Mock 文字反馈；并在功能分支表中规划分支 9 feature/attachments-and-tools。
+2026-11-08：完成第二版 `feature/attachments-and-tools` 分支开发（B1.13、B1.14、B1.15）：1) 实现多源附件录入（按钮/拖拽/剪贴板截图）、格式白名单校验、单文件 5MB 与整批 3 个上限深色弹窗整批拒绝拦截；2) 实现在线专属目录物理落盘（data/attachments/{session_id}/）、SQLite attachments 表外键级联与会话物理删除联动；3) 实现图片 180x180 缩略图预览（GET /preview）与点击调起 Windows 默认关联应用（POST /open -> os.startfile，404 弹窗提示）；4) 实现发送时模型视觉能力轻量探测与内存缓存，不支持时 400 拦截、弹窗警示、清空全部附件并保留输入框文字；5) 正式注册首个工具 read_attachment，实现 docx/xlsx/pptx/pdf/text/code 专用解析器、10,000 字符截断安全防线、扫描版与损坏文件错误降级，以及会话沙箱权限强隔离；6) 完善 ReAct 多轮循环与 tool_start / tool_done SSE 实时广播，前端动态展示状态胶囊组件，离线 Mock 直出确定性文字反馈。全量 39 项测试 100% 通过。
 
 ## 2. 已做决定及理由
 
@@ -72,10 +73,8 @@
 2.35 2026-11-06 SQLite 异步持久化采用应用级单一共享长连接（Single Shared `aiosqlite.Connection`）配合 `SessionStore` 内部 `asyncio.Lock` 写锁及 `PRAGMA busy_timeout = 5000`。理由：`aiosqlite` 每个连接对应一个后台线程且无内置连接池，单机应用复用单一连接只需在启动时执行一次 `PRAGMA journal_mode = WAL` 与 `PRAGMA foreign_keys = ON`，写锁在进程内串行化事务可彻底根除多会话节流刷盘时的 `database is locked` 异常，最易维护。
 2.36 2026-11-06 在线会话与离线会话数据源在 store.js 中分别维护在 onlineSessions 与 offlineSessions，切换形态时统一落入空白草稿态（activeSessionId = null）且输入框草稿文字不丢失。理由：严格遵循 Spec B1_1_3 与 B1.7 规定，杜绝双形态会话数据串流混杂，同时保证用户在形态间切换时不丢失打下的半截文字。
 2.37 2026-11-06 密钥缺失拦截采用非侵入顶部横幅（.chat-banner），文案严格绑定 System Error Code Registry（NO_API_KEY）。理由：满足 B1_1_2 与 3.6 单一事实来源规范，阻断进入在线模式的同时避免弹窗打扰用户输入。
-
 2.38 2026-11-06 第二版无工具阶段 ReAct 引擎直接输出最终回答，Prompt 严禁注入 Thought/Final Answer 前缀。理由：严格遵循 Intent B1.4 与 Spec B1_4_2，杜绝流式推理过程提前推向前端上屏造成泄露，同时保留 ReActLoop 骨架与动作分发点以平滑演进后续工具版本。
 2.39 2026-11-06 消息上下文构建严格维持 user-assistant 交叉序列并截取末尾滑动窗口。理由：过滤掉 error 等异常卡片后，可能残留连续两条 user 提问，丢弃前一条无应答消息可保证模型遵循标准多轮对话结构且上下文不超过预算。
-
 2.40 2026-11-06 在线对话回复生成与客户端连接彻底解耦。理由：用户切页、切会话或网络瞬断时，前端仅断开该客户端专属 SSE 连接，后台协程绝不取消、继续全速生成并节流写盘，再次进入时通过 GET /api/chat/stream 追赶补齐，确保长生成稳定不丢失。
 2.41 2026-11-06 单会话生成采用 409 同步槽位占位与严格串行。理由：杜绝短时间内重复点击或网络重发导致同一会话产生多个并发生成任务与时序错乱，而不同会话之间相互独立并发，互不阻塞。
 2.42 2026-11-07 Markdown 渲染采用两阶段状态机与纯 DOM 构建器，严禁使用 `innerHTML`。理由：完全杜绝 XSS 注入风险，即便模型输出恶意 HTML 脚本也作为纯文本安全显示。
@@ -86,6 +85,8 @@
 2.47 2026-11-07 图片视觉能力校验在发送时触发，不支持时 400 拦截、清空附件并保留文字。理由：严格遵循 Intent B1.14 规范，避免向不支持视觉的模型传入图片导致异常崩溃，同时保留用户输入的文本免于重新键入。
 2.48 2026-11-07 非图片附件采用统一注册工具 `read_attachment` 结合 docx/xlsx/pptx/pdf 专用解析库与 10,000 字符截断。理由：标准化 ReAct 工具调用协议，以统一 schema 与沙箱权限读取当前会话文件，截断声明确保大上下文模型预算可控且 Agent 如实告知用户。
 2.49 2026-11-07 工具调用全链路引入 SSE `tool_start` 与 `tool_done` 事件驱动前端状态胶囊。理由：满足 B1.15“界面展示调用过程”规范，使后台推理与工具执行状态对用户透明可见。
+2.50 2026-11-08 表单解析多附件统一以 `hasattr(item, 'filename') and item.filename` 判定提取。理由：FastAPI 0.115+ 内部继承树中 `request.form()` 返回 `starlette.datastructures.UploadFile`，使用 `isinstance(item, fastapi.UploadFile)` 会因逆向子类继承判定为 False 从而过滤掉所有上传文件。
+2.51 2026-11-08 异步单元测试环境下的后台异步生成任务在 tearDown 时统一执行 `await task_manager.shutdown()`。理由：在测试断言退出后后台异步协程若仍在写入临时 SQLite 数据库或持有临时目录文件句柄，在 Windows 平台上会引发文件占用锁导致测试环境清理报 WinError 32 异常。
 
 ## 3. 踩过的坑
 
@@ -98,10 +99,11 @@
 3.7 2026-11-06 多会话流式响应时，`onMeta` 中优先执行 `updateMessage` 导致 `agentMessage.id` 变更为服务端分配的 `message_id`，而此时 DOM 节点的 `data-message-id` 仍为客户端初始占位 ID，导致选择器返回 null，未能及时同步 DOM 属性；致使后续 `onDelta` 增量无法在当前会话的 DOM 树上命中卡片，造成等待动画无法移除且文字未能实时上屏（切走再切回时由于全量重绘因此能恢复显示）。通过在 `onMeta` 中优先基于 `prevId` 定位并更新 DOM 属性、在 `onDelta` 中双重兼容最新 ID 与初始 ID，并补充 `.msg--assistant` 样式选择器，彻底修复流式实时逐字上屏问题。
 3.8 2026-11-06 通过 document.createElement('svg') 动态创建节点会生成 HTMLUnknownElement 而不是 SVGElement，导致浏览器不解析其命名空间及内部 <use> 引用，使重命名和删除图标完全不渲染（表现为空白/透明）；通过在 dom.js 的 el 工具函数中增加 SVG 标签集判断并使用 document.createElementNS(SVG_NS, tagName) 以及在业务中统一使用 createSvgIcon，彻底修复图标隐形透明问题。
 3.9 2026-11-06 Headless Edge 启动时若未指定 --user-data-dir 与 --disable-extensions，浏览器会自动加载用户宿主环境中的全部插件背景页，导致 CDP /json 接口返回的首个 target 为扩展页面从而引发 evaluate 节点未命中；且 ES Module 异步加载特性使得 DOM 节点先行渲染而脚本逻辑尚未挂载。通过在自动化测试中指定隔离临时用户目录、禁用扩展，并在 main.js 末尾标记 window.__emibot_ready 显式等待挂载完成，彻底解决浏览器端自动化测试的竞态假失败问题。
+3.10 2026-11-08 FastAPI 0.115+ 与 Starlette 的 UploadFile 并非双向同构类，Starlette 生成的 UploadFile 对象不是 FastAPI UploadFile 的实例，导致严格类型检查失效；通过鸭子类型 `hasattr(item, 'filename')` 实现稳健防御。
 
 ## 4. 下一步
 
-4.1 `feature/generation-decoupling` 经 Fibel 验收通过后，合并回 `main` 并推送到 `origin`。
-4.2 第二版（B1.0 在线对话）全部功能分支（5/6/7）已全部圆满交付并具备完整测试覆盖。
-4.3 从合并后的 `main` 切出功能分支 `feature/attachments-and-tools` 开始 B1.13 到 B1.15 的开发与端到端验证。
+4.1 `feature/attachments-and-tools` 分支经 Fibel 验收通过后，合并回 `main` 并推送到 `origin`。
+4.2 第二版（B1.0 在线对话与首个工具 read_attachment）全部需求规格（B1.1 到 B1.15）已全部完成并闭环。
+4.3 依据用户指令，准备进入下一阶段开发或归档第二版阶段成果。
 4.4 保持提交后推送当前分支、合并后推送 `main` 的 Git 同步约定。
