@@ -346,11 +346,15 @@ class TestAttachmentAPIs(unittest.IsolatedAsyncioTestCase):
         self.db_path = self.dir_path / f"test_api_{uuid.uuid4().hex[:6]}.db"
         self.att_dir = self.dir_path / "attachments"
         self.att_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir = self.dir_path / "cache" / "attachments"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         self.patcher_db = patch.object(config, "DB_PATH", self.db_path)
         self.patcher_att = patch.object(config, "ATTACHMENT_DIR", self.att_dir)
+        self.patcher_cache = patch.object(config, "ATTACHMENT_CACHE_DIR", self.cache_dir)
         self.patcher_db.start()
         self.patcher_att.start()
+        self.patcher_cache.start()
 
         await init_db(self.db_path)
         self.app = create_app()
@@ -366,6 +370,7 @@ class TestAttachmentAPIs(unittest.IsolatedAsyncioTestCase):
         await close_db()
         self.patcher_db.stop()
         self.patcher_att.stop()
+        self.patcher_cache.stop()
         self.temp_dir.cleanup()
         clear_model_vision_cache()
 
@@ -510,6 +515,282 @@ class TestAttachmentAPIs(unittest.IsolatedAsyncioTestCase):
 
         # 3. 验证磁盘文件夹已被物理递归清理
         self.assertFalse(session_folder.exists())
+
+    async def test_cache_attachments_api_and_fallback(self):
+        # 1. 测试 POST /api/attachments/cache 上传附件
+        file_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+        files = [
+            ("files", ("cached_pic.png", io.BytesIO(file_bytes), "image/png")),
+            ("files", ("cached_doc.txt", io.BytesIO(b"hello cache"), "text/plain")),
+        ]
+        res = self.client.post("/api/attachments/cache", files=files)
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertIn("attachments", data)
+        self.assertEqual(len(data["attachments"]), 2)
+
+        pic_att = data["attachments"][0]
+        self.assertEqual(pic_att["filename"], "cached_pic.png")
+        self.assertEqual(pic_att["file_type"], "png")
+        self.assertTrue(pic_att["is_image"])
+
+        # 验证物理文件写入缓存目录
+        cached_files = list(self.cache_dir.iterdir())
+        self.assertEqual(len(cached_files), 2)
+
+        # 2. 验证 preview_attachment 回退到缓存查询
+        preview_res = self.client.get(f"/api/attachments/{pic_att['id']}/preview")
+        self.assertEqual(preview_res.status_code, 200)
+        self.assertEqual(preview_res.headers.get("content-type"), "image/png")
+
+        # 3. 验证 open_attachment 回退到缓存查询
+        with patch("os.startfile", create=True) as mock_startfile:
+            open_res = self.client.post(f"/api/attachments/{pic_att['id']}/open")
+            self.assertEqual(open_res.status_code, 200)
+            self.assertEqual(open_res.json()["status"], "opened")
+            self.assertTrue(mock_startfile.called)
+
+        # 4. 测试缓存校验拦截 (超限数量、超大、格式不支持)
+        bad_ext_res = self.client.post(
+            "/api/attachments/cache",
+            files=[("files", ("bad.exe", io.BytesIO(b"abc"), "application/octet-stream"))],
+        )
+        self.assertEqual(bad_ext_res.status_code, 422)
+        self.assertEqual(bad_ext_res.json()["code"], "ATTACHMENT_TYPE_NOT_SUPPORTED")
+
+        oversized_res = self.client.post(
+            "/api/attachments/cache",
+            files=[("files", ("big.txt", io.BytesIO(b"0" * (5 * 1024 * 1024 + 1)), "text/plain"))],
+        )
+        self.assertEqual(oversized_res.status_code, 422)
+        self.assertEqual(oversized_res.json()["code"], "ATTACHMENT_TOO_LARGE")
+
+        count_res = self.client.post(
+            "/api/attachments/cache",
+            files=[("files", (f"f{i}.txt", io.BytesIO(b"x"), "text/plain")) for i in range(4)],
+        )
+        self.assertEqual(count_res.status_code, 422)
+        self.assertEqual(count_res.json()["code"], "ATTACHMENT_COUNT_EXCEEDED")
+
+    async def test_get_messages_includes_storage_path(self):
+        # 验证 session_store.get_messages 读取附件时包含 storage_path 字段
+        files = [("files", ("doc.txt", io.BytesIO(b"content"), "text/plain"))]
+        self.client.post(
+            f"/api/sessions/{self.session_id}/messages",
+            data={"content": "测试 storage_path 字段"},
+            files=files,
+        )
+        msgs = await session_store.get_messages(self.session_id)
+        att = msgs[0]["attachments"][0]
+        self.assertIn("storage_path", att)
+        self.assertIsNotNone(att["storage_path"])
+        self.assertTrue(Path(att["storage_path"]).is_file())
+
+
+class TestMultimodalPayload(unittest.TestCase):
+    """测试多模态 Base64 图片 Payload 构建与纯文本回退。"""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.dir_path = Path(self.temp_dir.name)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_build_payload_messages_with_image(self):
+        from Assistant.agent.online_agent import build_payload_messages
+
+        # 创建真实图片文件
+        img_file = self.dir_path / "test.png"
+        raw_png_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDRtest_data"
+        img_file.write_bytes(raw_png_bytes)
+
+        user_msg = ChatMessage(
+            role="user",
+            content="请分析这张图片",
+            attachments=[
+                AttachmentInfo(
+                    id="att_img_1",
+                    filename="test.png",
+                    file_type="png",
+                    file_size=len(raw_png_bytes),
+                    is_image=True,
+                    storage_path=str(img_file),
+                )
+            ],
+        )
+
+        payload = build_payload_messages([user_msg], system_prompt="You are Emibot.")
+        self.assertEqual(len(payload), 2)
+        self.assertEqual(payload[0], {"role": "system", "content": "You are Emibot."})
+
+        user_payload = payload[1]
+        self.assertEqual(user_payload["role"], "user")
+        self.assertIsInstance(user_payload["content"], list)
+        self.assertEqual(len(user_payload["content"]), 2)
+
+        # 检查文本部分
+        self.assertEqual(user_payload["content"][0], {"type": "text", "text": "请分析这张图片"})
+
+        # 检查图片部分 (Base64 data url)
+        img_part = user_payload["content"][1]
+        self.assertEqual(img_part["type"], "image_url")
+        url = img_part["image_url"]["url"]
+        self.assertTrue(url.startswith("data:image/png;base64,"))
+
+        import base64
+        b64_str = url.split("base64,")[1]
+        decoded = base64.b64decode(b64_str)
+        self.assertEqual(decoded, raw_png_bytes)
+
+    def test_build_payload_messages_plain_text(self):
+        from Assistant.agent.online_agent import build_payload_messages
+
+        user_msg = ChatMessage(
+            role="user",
+            content="纯文本内容",
+            attachments=[],
+        )
+        payload = build_payload_messages([user_msg])
+        self.assertEqual(payload, [{"role": "user", "content": "纯文本内容"}])
+
+
+class TestStepStatusBroadcasting(unittest.IsolatedAsyncioTestCase):
+    """测试 ReAct 循环规划步骤指示状态广播 (thinking / calling_tool / generating)。"""
+
+    async def test_react_loop_step_status_events(self):
+        from Assistant.agent.react import ReActLoop
+        from Assistant.agent.tools.registry import ToolRegistry
+        from Assistant.agent.tools.base import BaseTool
+
+        class DummyTool(BaseTool):
+            @property
+            def name(self) -> str:
+                return "test_tool"
+
+            @property
+            def description(self) -> str:
+                return "A test tool"
+
+            @property
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {}}
+
+            async def execute(self, **kwargs) -> str:
+                return "Tool output result"
+
+        reg = ToolRegistry()
+        reg.register(DummyTool())
+
+        mock_llm = AsyncMock()
+        mock_llm.chat_completion.side_effect = [
+            {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "function": {"name": "test_tool", "arguments": "{}"},
+                    }
+                ],
+            },
+            {
+                "content": "这是最终回答",
+                "tool_calls": None,
+            },
+        ]
+
+        events = []
+        def on_event(ev_type: str, data: dict):
+            events.append((ev_type, data))
+
+        loop = ReActLoop(llm_client=mock_llm, tools=reg)
+        user_msg = ChatMessage(role="user", content="请调用测试工具")
+        chunks = [chunk async for chunk in loop.run([user_msg], on_event=on_event)]
+
+        self.assertEqual("".join(chunks), "这是最终回答")
+
+        # 验证 step_status 事件序列
+        step_events = [ev for ev in events if ev[0] == "step_status"]
+        self.assertGreaterEqual(len(step_events), 3)
+
+        # 第 1 步：向模型发起调用前 -> thinking
+        self.assertEqual(step_events[0][1]["status"], "thinking")
+        self.assertEqual(step_events[0][1]["text"], "正在思考...")
+
+        # 第 2 步：决定调用工具 -> calling_tool
+        self.assertEqual(step_events[1][1]["status"], "calling_tool")
+        self.assertEqual(step_events[1][1]["tool"], "test_tool")
+
+        # 工具完成 -> tool_done
+        tool_done_events = [ev for ev in events if ev[0] == "tool_done"]
+        self.assertEqual(len(tool_done_events), 1)
+
+        # 第 3 步：第 2 轮思考 -> thinking
+        self.assertEqual(step_events[2][1]["status"], "thinking")
+
+        # 第 4 步：模型决定输出最终回答 -> generating
+        self.assertEqual(step_events[3][1]["status"], "generating")
+        self.assertEqual(step_events[3][1]["text"], "正在生成回复...")
+
+    async def test_react_loop_no_tools_generating_event(self):
+        from Assistant.agent.react import ReActLoop
+        from Assistant.agent.tools.registry import ToolRegistry
+
+        empty_reg = ToolRegistry()
+        mock_llm = AsyncMock()
+        async def mock_stream(payload):
+            yield "直接"
+            yield "回答"
+        mock_llm.stream_chat = mock_stream
+
+        events = []
+        def on_event(ev_type: str, data: dict):
+            events.append((ev_type, data))
+
+        loop = ReActLoop(llm_client=mock_llm, tools=empty_reg)
+        user_msg = ChatMessage(role="user", content="简单问答")
+        chunks = [chunk async for chunk in loop.run([user_msg], on_event=on_event)]
+
+        self.assertEqual("".join(chunks), "直接回答")
+        step_events = [ev for ev in events if ev[0] == "step_status"]
+        self.assertEqual(len(step_events), 1)
+        self.assertEqual(step_events[0][1]["status"], "generating")
+        self.assertEqual(step_events[0][1]["text"], "正在生成回复...")
+
+    async def test_task_manager_step_status_broadcast_and_catchup(self):
+        from Assistant.agent.task_manager import GenerationTask, task_manager
+
+        task = GenerationTask(
+            task_id="t_status_test",
+            session_id="s_status_test",
+            user_msg_id="m_u_1",
+            message_id="m_a_1",
+            created_at="2026-11-08T12:00:00",
+            model="test-model",
+        )
+        task_manager._tasks[task.session_id] = task
+
+        # 广播 step_status 事件并确认保存在 task.current_step_status
+        status_payload = {
+            "status": "calling_tool",
+            "tool": "read_attachment",
+            "text": "正在调用工具: read_attachment...",
+        }
+        task_manager._broadcast(task, "step_status", status_payload)
+        self.assertEqual(task.current_step_status, status_payload)
+
+        # 验证新订阅者建立时能追赶收到 meta 和 step_status 事件
+        mock_store = AsyncMock()
+        subscriber_events = []
+        async for ev_type, ev_data in task_manager.subscribe_stream(task.session_id, mock_store):
+            subscriber_events.append((ev_type, ev_data))
+            if len(subscriber_events) >= 2:
+                break
+
+        task_manager._tasks.pop(task.session_id, None)
+        self.assertEqual(subscriber_events[0][0], "meta")
+        self.assertEqual(subscriber_events[1][0], "step_status")
+        self.assertEqual(subscriber_events[1][1]["status"], "calling_tool")
 
 
 class TestMockAgentAttachments(unittest.TestCase):
