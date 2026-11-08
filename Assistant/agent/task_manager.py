@@ -42,6 +42,7 @@ class GenerationTask:
         self.error_code: Optional[str] = None
         self.error_message: Optional[str] = None
         self.final_content: str = ""
+        self.current_step_status: Optional[dict[str, Any]] = None
 
 
 class TaskManager:
@@ -287,6 +288,8 @@ class TaskManager:
 
     def _broadcast(self, task: GenerationTask, event_type: str, data: dict[str, Any]) -> None:
         """向当前任务的所有订阅客户端广播事件。"""
+        if event_type == "step_status":
+            task.current_step_status = data
         for queue in list(task.subscribers):
             try:
                 queue.put_nowait((event_type, data))
@@ -375,7 +378,10 @@ class TaskManager:
                 },
             )
 
-            # 2. 追赶机制：一次性下发当前任务累积的全部增量文本
+            # 2. 追赶机制：若已有规划步骤状态，下发当前步骤；一次性下发当前任务累积的全部增量文本
+            if getattr(task, "current_step_status", None):
+                yield ("step_status", task.current_step_status)
+
             caught_up_text = "".join(task.chunk_buffer)
             if caught_up_text:
                 yield ("delta", {"text": caught_up_text})

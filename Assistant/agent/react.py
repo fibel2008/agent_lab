@@ -1,8 +1,11 @@
 """ReAct (Reasoning and Acting) 循环执行引擎模块。"""
 
-from collections.abc import AsyncIterator, Callable
+import base64
+from collections.abc import AsyncIterator, Callable, Sequence
 import json
 import logging
+import mimetypes
+from pathlib import Path
 from typing import Any, Optional
 
 from Assistant.agent.base import ChatMessage
@@ -19,6 +22,53 @@ DEFAULT_SYSTEM_PROMPT = (
     "若附件内容超出长度上限已被截断，你必须在回答中如实向用户声明由于文件过长仅分析了前半部分；"
     "若附件读取失败，必须如实将失败原因告知用户，严禁凭空虚构或猜测文件内容。"
 )
+
+
+def build_payload_messages(
+    messages: Sequence[ChatMessage],
+    system_prompt: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """将内部 ChatMessage 消息列表转换为符合 OpenAI API 标准格式的 payload_messages。
+
+    对于包含 is_image=True 的附件的用户消息，读取图片二进制并转为 Base64 编码，
+    组合为 OpenAI 多模态 content 格式；若无图片附件，保持纯文本字符串 content。
+    """
+    payload_messages: list[dict[str, Any]] = []
+    if system_prompt:
+        payload_messages.append({"role": "system", "content": system_prompt})
+
+    for msg in messages:
+        if msg.role != "user":
+            payload_messages.append({"role": msg.role, "content": msg.content})
+            continue
+
+        image_attachments = [att for att in msg.attachments if att.is_image]
+        if not image_attachments:
+            payload_messages.append({"role": msg.role, "content": msg.content})
+            continue
+
+        # 包含图片附件的多模态消息结构构建
+        content_parts: list[dict[str, Any]] = [{"type": "text", "text": msg.content}]
+        for att in image_attachments:
+            if att.storage_path:
+                img_path = Path(att.storage_path)
+                if img_path.is_file():
+                    mime, _ = mimetypes.guess_type(str(img_path))
+                    if not mime:
+                        mime = "image/png"
+                    b64 = base64.b64encode(img_path.read_bytes()).decode("utf-8")
+                    content_parts.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime};base64,{b64}"},
+                    })
+                else:
+                    logger.warning("多模态图片附件物理文件不存在: %s", att.storage_path)
+            else:
+                logger.warning("多模态图片附件缺少 storage_path: id=%s", att.id)
+
+        payload_messages.append({"role": "user", "content": content_parts})
+
+    return payload_messages
 
 
 class ReActLoop:
@@ -73,15 +123,12 @@ class ReActLoop:
         session_id: Optional[str] = None,
     ) -> AsyncIterator[str]:
         """ReAct 核心循环入口：驱动思考与行动，广播过程事件并流式产出最终回答。"""
-        payload_messages: list[dict[str, Any]] = []
-        if self.system_prompt:
-            payload_messages.append({"role": "system", "content": self.system_prompt})
-
-        for msg in messages:
-            payload_messages.append({"role": msg.role, "content": msg.content})
+        payload_messages = build_payload_messages(messages, system_prompt=self.system_prompt)
 
         # 1. 无工具注册时直接进行最终回答流式生成，防推理过程泄露
         if self.tools.is_empty():
+            if on_event:
+                on_event("step_status", {"status": "generating", "text": "正在生成回复..."})
             async for chunk in self.llm_client.stream_chat(payload_messages):
                 yield chunk
             return
@@ -93,6 +140,10 @@ class ReActLoop:
         while step < self.max_steps:
             step += 1
             logger.info("执行 ReAct 步数 %d/%d", step, self.max_steps)
+
+            # ReAct 循环向模型发起调用前广播 step_status: {"status": "thinking", "text": "正在思考..."}
+            if on_event:
+                on_event("step_status", {"status": "thinking", "text": "正在思考..."})
 
             resp_msg = await self.llm_client.chat_completion(
                 payload_messages, tools=tools_schema
@@ -127,8 +178,17 @@ class ReActLoop:
                         if att_record:
                             filename = att_record["filename"]
 
-                    # 1. 广播 tool_start 事件
+                    # 决定调用工具时广播 step_status
                     if on_event:
+                        on_event(
+                            "step_status",
+                            {
+                                "status": "calling_tool",
+                                "tool": tool_name,
+                                "text": f"正在调用工具: {tool_name}...",
+                            },
+                        )
+                        # 兼容原有 tool_start 广播
                         on_event(
                             "tool_start",
                             {
@@ -138,7 +198,7 @@ class ReActLoop:
                             },
                         )
 
-                    # 2. 分发执行工具动作
+                    # 分发执行工具动作
                     call_obj = ToolCall(id=tc.get("id", ""), name=tool_name, arguments=args)
                     tool_status = "success"
                     try:
@@ -149,7 +209,7 @@ class ReActLoop:
                         observation = f"[读取失败：{exc}]"
                         tool_status = "error"
 
-                    # 3. 广播 tool_done 事件
+                    # 工具执行完毕后广播 tool_done
                     if on_event:
                         on_event(
                             "tool_done",
@@ -159,7 +219,7 @@ class ReActLoop:
                             },
                         )
 
-                    # 4. 存入 ReAct 上下文
+                    # 存入 ReAct 上下文
                     payload_messages.append({
                         "role": "tool",
                         "tool_call_id": tc.get("id", ""),
@@ -169,7 +229,10 @@ class ReActLoop:
                 # 继续下一轮循环驱动大模型思考与生成
                 continue
 
-            # 若模型未调用工具，产出最终回答并流式切片返回
+            # 若模型未调用工具，模型决定输出最终回答前广播 step_status: {"status": "generating", "text": "正在生成回复..."}
+            if on_event:
+                on_event("step_status", {"status": "generating", "text": "正在生成回复..."})
+
             final_content = resp_msg.get("content") or ""
             chunk_size = 4
             for i in range(0, len(final_content), chunk_size):
