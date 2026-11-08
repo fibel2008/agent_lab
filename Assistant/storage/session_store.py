@@ -2,10 +2,13 @@
 
 import asyncio
 from datetime import datetime
+from pathlib import Path
 import secrets
+import shutil
 import time
 from typing import Optional
 
+from .. import config
 from ..config import ERROR_MESSAGES, logger
 from .db import get_db
 
@@ -22,6 +25,12 @@ def generate_online_message_id(role: str) -> str:
     prefix = "m_u" if role == "user" else "m_a"
     rand = secrets.token_hex(4)
     return f"{prefix}_{rand}"
+
+
+def generate_attachment_id() -> str:
+    """生成符合在线附件格式规范的唯一 ID：att_u_<rand>。"""
+    rand = secrets.token_hex(4)
+    return f"att_u_{rand}"
 
 
 def base36_encode(number: int) -> str:
@@ -119,7 +128,7 @@ class SessionStore:
         return await self.get_session(session_id)
 
     async def delete_session(self, session_id: str) -> bool:
-        """删除指定会话，依靠外键 ON DELETE CASCADE 自动级联清理消息与任务。"""
+        """删除指定会话，依靠外键 ON DELETE CASCADE 自动级联清理消息与任务，并物理清理磁盘附件。"""
         db = get_db()
         async with self._write_lock:
             cursor = await db.execute(
@@ -130,11 +139,41 @@ class SessionStore:
             deleted = cursor.rowcount > 0
             if deleted:
                 logger.info("Deleted online session: %s", session_id)
-            return deleted
+
+        # 物理清理该会话在磁盘上的所有附件副本文件
+        try:
+            session_attachment_dir = config.ATTACHMENT_DIR / session_id
+            if session_attachment_dir.exists():
+                shutil.rmtree(session_attachment_dir, ignore_errors=True)
+                logger.info("Cleaned attachment directory for session: %s", session_id)
+        except Exception as exc:
+            logger.warning("清理会话附件目录异常: %s", exc)
+
+        return deleted
 
     async def get_messages(self, session_id: str) -> list[dict]:
-        """获取指定会话的历史消息，按 seq 升序排列，并依据 error_code 填充 error_message。"""
+        """获取指定会话的历史消息，按 seq 升序排列，并依据 error_code 填充 error_message 及关联附件。"""
         db = get_db()
+        # 1. 查询会话内所有附件
+        attachments_by_msg: dict[str, list[dict]] = {}
+        async with db.execute(
+            "SELECT id, message_id, filename, file_type, file_size, storage_path, created_at "
+            "FROM attachments WHERE session_id = ? ORDER BY created_at ASC",
+            (session_id,),
+        ) as cursor:
+            att_rows = await cursor.fetchall()
+            for att in att_rows:
+                ext = Path(att["filename"]).suffix.lower()
+                is_img = ext in config.IMAGE_ATTACHMENT_EXTS
+                attachments_by_msg.setdefault(att["message_id"], []).append({
+                    "id": att["id"],
+                    "filename": att["filename"],
+                    "file_type": att["file_type"],
+                    "file_size": att["file_size"],
+                    "is_image": is_img,
+                })
+
+        # 2. 查询消息
         async with db.execute(
             "SELECT seq, id, role, content, status, error_code, created_at FROM messages "
             "WHERE session_id = ? ORDER BY seq ASC",
@@ -154,10 +193,33 @@ class SessionStore:
                         "status": row["status"],
                         "error_code": err_code,
                         "error_message": err_msg,
+                        "attachments": attachments_by_msg.get(row["id"], []),
                         "created_at": row["created_at"],
                     }
                 )
             return result
+
+    async def get_attachment(self, attachment_id: str) -> Optional[dict]:
+        """根据 attachment_id 查询附件信息，包含 storage_path。"""
+        db = get_db()
+        async with db.execute(
+            "SELECT id, session_id, message_id, filename, file_type, file_size, storage_path, created_at "
+            "FROM attachments WHERE id = ?",
+            (attachment_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "id": row["id"],
+                "session_id": row["session_id"],
+                "message_id": row["message_id"],
+                "filename": row["filename"],
+                "file_type": row["file_type"],
+                "file_size": row["file_size"],
+                "storage_path": Path(row["storage_path"]),
+                "created_at": row["created_at"],
+            }
 
     async def create_turn_and_task(
         self,
@@ -166,8 +228,9 @@ class SessionStore:
         user_content: str,
         assistant_msg_id: str,
         task_id: str,
+        attachments: Optional[list[dict]] = None,
     ) -> dict:
-        """单事务原子写入用户消息、助手占位消息、generation_tasks 记录并更新会话时间。"""
+        """单事务原子写入用户消息、附件记录、助手占位消息、generation_tasks 记录并更新会话时间。"""
         db = get_db()
         now = self._now_iso()
         async with self._write_lock:
@@ -177,19 +240,36 @@ class SessionStore:
                 "VALUES (?, ?, 'user', ?, 'done', NULL, ?)",
                 (user_msg_id, session_id, user_content, now),
             )
-            # 2. 插入初始助手占位消息
+            # 2. 批量插入附件记录
+            if attachments:
+                for att in attachments:
+                    await db.execute(
+                        "INSERT INTO attachments (id, session_id, message_id, filename, file_type, file_size, storage_path, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            att["id"],
+                            session_id,
+                            user_msg_id,
+                            att["filename"],
+                            att["file_type"],
+                            att["file_size"],
+                            str(att["storage_path"]),
+                            now,
+                        ),
+                    )
+            # 3. 插入初始助手占位消息
             await db.execute(
                 "INSERT INTO messages (id, session_id, role, content, status, error_code, created_at) "
                 "VALUES (?, ?, 'assistant', '', 'streaming', NULL, ?)",
                 (assistant_msg_id, session_id, now),
             )
-            # 3. 插入 generation_tasks 记录
+            # 4. 插入 generation_tasks 记录
             await db.execute(
                 "INSERT INTO generation_tasks (task_id, session_id, message_id, status, created_at, updated_at) "
                 "VALUES (?, ?, ?, 'running', ?, ?)",
                 (task_id, session_id, assistant_msg_id, now, now),
             )
-            # 4. 更新会话 updated_at
+            # 5. 更新会话 updated_at
             await db.execute(
                 "UPDATE sessions SET updated_at = ? WHERE id = ?",
                 (now, session_id),

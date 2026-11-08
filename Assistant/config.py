@@ -107,6 +107,37 @@ DB_PATH: Path = Path(
     or (Path(__file__).resolve().parent.parent / "data" / "emibot.db")
 ).resolve()
 
+ATTACHMENT_DIR: Path = Path(
+    os.environ.get("ASSISTANT_ATTACHMENT_DIR", "").strip()
+    or (Path(__file__).resolve().parent.parent / "data" / "attachments")
+).resolve()
+
+MAX_ATTACHMENT_COUNT: int = 3
+MAX_ATTACHMENT_SIZE: int = 5 * 1024 * 1024  # 5MB
+ATTACHMENT_TEXT_TRUNCATE_LIMIT: int = 10000
+
+IMAGE_ATTACHMENT_EXTS: set[str] = {".png", ".jpg", ".jpeg", ".webp"}
+DOC_ATTACHMENT_EXTS: set[str] = {".docx", ".xlsx", ".pptx", ".pdf"}
+TEXT_ATTACHMENT_EXTS: set[str] = {".md", ".txt"}
+CODE_ATTACHMENT_EXTS: set[str] = {
+    ".py",
+    ".js",
+    ".ts",
+    ".json",
+    ".html",
+    ".css",
+    ".java",
+    ".c",
+    ".cpp",
+    ".go",
+    ".sh",
+    ".yaml",
+    ".sql",
+}
+ALLOWED_ATTACHMENT_EXTS: set[str] = (
+    IMAGE_ATTACHMENT_EXTS | DOC_ATTACHMENT_EXTS | TEXT_ATTACHMENT_EXTS | CODE_ATTACHMENT_EXTS
+)
+
 # 3.6 全局错误码与提示文案映射表（System Error Code Registry）唯一事实来源
 ERROR_MESSAGES: dict[str, str] = {
     "NO_API_KEY": "未检测到模型密钥，请在本地环境变量配置并重启服务后重试。",
@@ -116,4 +147,10 @@ ERROR_MESSAGES: dict[str, str] = {
     "TIMEOUT": "连接模型服务商超时，请检查您的网络连接与代理设置。",
     "UPSTREAM_ERROR": "模型服务商返回异常，请检查模型与端点配置或稍后重试。",
     "INTERNAL_ERROR": "生成过程发生异常，请重试。",
+    "ATTACHMENT_TOO_LARGE": "附件大小超过限制（单个文件不得超过 5MB）。",
+    "ATTACHMENT_TYPE_NOT_SUPPORTED": "不支持的文件类型，仅支持常见图片、文档、文本与代码文件。",
+    "ATTACHMENT_COUNT_EXCEEDED": "单条消息最多添加 3 个附件。",
+    "ATTACHMENT_NOT_FOUND": "文件已不存在。",
+    "IMAGE_NOT_SUPPORTED": "当前模型不支持图片输入。",
+    "ATTACHMENT_READ_FAILED": "附件读取失败，文件可能已损坏、被加密或属于扫描版 PDF。",
 }
