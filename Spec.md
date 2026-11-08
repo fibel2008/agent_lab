@@ -1173,14 +1173,23 @@ status: Literal["running", "completed", "interrupted", "failed"]
 
 ##### B1.13 对话中添加附件与默认应用打开
 
-**B1_13_1 多源附件添加交互与待发送区内存管理**
+**B1_13_1 多源附件添加交互、全域拖拽提示与待发送区内存管理**
 
 - 状态：已完成
-- 需求描述：支持通过点击回形针按钮选择文件、拖拽文件进入输入区、以及 `Ctrl+V` 粘贴（支持本地文件与系统剪贴板截图）三种方式添加附件；在输入框上方动态展现待发送附件列表（包含文件名、格式图标、文件大小与单独移除按钮）；离线与在线形态支持相同添加与接收能力。
+- 需求描述：支持通过点击回形针按钮选择文件、拖拽文件进入对话区（支持整个对话面板）、以及 `Ctrl+V` 粘贴三种方式添加附件；拖拽进入对话区时全域背景虚化并居中提示拖入添加附件与规格要求；在输入框上方动态展现待发送附件列表（包含文件名、格式图标、文件大小与单独移除按钮）；离线与在线形态支持相同添加与接收能力。
 - 详细方案设计：
   1. 触发入口与多源监听（`views/chat.js` 与 `index.html`）：
      - 在输入区左侧工具栏增设回形针按钮 `<button class="chat-input__action-btn" id="attach-btn" type="button" aria-label="添加附件" title="添加附件"><svg class="icon"><use href="#icon-paperclip"></use></svg></button>`，绑定隐藏的 `<input type="file" id="file-input" multiple>`，点击触发系统文件选择框；
-     - 监听整个输入框容器 `.chat-input` 的 `dragover`（阻止默认行为并为容器添加 `.is-dragover` 高亮边框）、`dragleave`（移除高亮）与 `drop`（提取 `e.dataTransfer.files` 并移除高亮）事件；
+     - **对话面板全域拖拽与提示蒙层（全屏虚化居中提示）**：
+       - 将拖拽监听（`dragenter`、`dragover`、`dragleave`、`drop`）绑定至整个对话面板容器 `#chat-panel`（或 `.chat-view`）；
+       - 在对话面板内挂载全屏拖拽蒙层 `#chat-drag-overlay`，默认隐藏；
+       - 当外部文件拖入对话面板时（`dragover`）：蒙层激活显现，对话背景应用高斯模糊（`backdrop-filter: blur(4px)`），面板中央居中展示深色高亮卡片：
+         - 标题：“拖入此处添加附件”；
+         - 规格要求说明：
+           - 格式要求：支持常见图片（.png, .jpg, .jpeg, .webp）、文档（.docx, .xlsx, .pptx, .pdf）、文本及代码文件（.txt, .md, .py, .js 等）；
+           - 大小限制：单个文件不超过 5MB；
+           - 数量限制：单条消息最多添加 3 个附件；
+       - 当拖拽离开对话面板（`dragleave`，经 `relatedTarget` 验证脱离）或释放文件（`drop`）时：蒙层平滑淡出，对话背景恢复清晰；若为 `drop` 则提取 `e.dataTransfer.files` 进入附件添加处理流程；
      - 监听输入框文本域 `#message-input` 的 `paste` 事件：遍历 `e.clipboardData.items`，过滤出文件对象（`item.kind === 'file'`）；若检测到剪贴板图片（`item.type.startsWith('image/')` 且文件名为空或默认 `image.png`），自动按 `image_${Date.now()}.png` 生成规范文件名转换为 `File` 对象；
   2. 待发送附件池状态管理（`store.js`）：
      - 在 `store.state` 中维护待发送附件数组 `pendingAttachments`，每个条目结构为：`{ id: 'att_tmp_' + uid, file: File, name: file.name, size: file.size, ext: string, isImage: boolean, previewUrl: string | null }`；
@@ -1191,49 +1200,56 @@ status: Literal["running", "completed", "interrupted", "failed"]
      - 点击移除按钮时：从 `store.pendingAttachments` 中精确移除该项；若存在 `previewUrl` 则显式调用 `URL.revokeObjectURL(previewUrl)` 释放内存；输入框中的文字与已保留的其它附件完全不受影响；
      - 双形态统一：离线形态与在线形态均使用该完全相同的前端待发送区与内存管理。
 
-**B1_13_2 客户端全量前置校验与整批拒绝深色弹窗拦截**
+**B1_13_2 客户端前置去重、全量前置校验与整批拒绝拦截**
 
 - 状态：已完成
-- 需求描述：添加附件时执行严格规格校验（格式白名单、单文件不超过 5MB、单条消息总数不超过 3 个）；只要本次添加中任一文件不合格，整批拒绝本次添加，弹出深色提示弹窗说明具体原因，输入区已有的合格附件保持不变。
+- 需求描述：添加附件时支持静默去重（相同文件不重复添加且不弹窗，只保留一个文件）；执行严格规格校验（格式白名单、单文件不超过 5MB、单条消息总数不超过 3 个）；只要去重后的本次新添加中任一文件不合格，整批拒绝本次添加，弹出深色提示弹窗说明具体原因，输入区已有的合格附件保持不变。
 - 详细方案设计：
-  1. 允许类型白名单与扩展名判定（`Assistant/web/js/views/chat.js`）：
+  1. **相同文件静默去重机制**：
+     - 当传入文件列表 `incomingFiles` 时，首先依据文件名（`name`）与字节大小（`size`）进行去重比对；
+     - 若传入文件在当前待发送池 `pendingAttachments` 中已存在，或本次批量传入中存在重复文件，**不弹出任何错误弹窗，静默忽略重复文件，只保留单一文件实例**；
+     - 仅对去重后真正新增的文件执行后续格式、大小与总数校验；
+  2. 允许类型白名单与扩展名判定（`Assistant/web/js/views/chat.js`）：
      - 图片类：`.png`、`.jpg`、`.jpeg`、`.webp`；
      - 文档类：`.docx`、`.xlsx`、`.pptx`、`.pdf`（明确禁止 `.doc`、`.xls`、`.ppt` 等旧格式二进制文件）；
      - 文本类：`.md`、`.txt`；
      - 代码类：`.py`、`.js`、`.ts`、`.json`、`.html`、`.css`、`.java`、`.c`、`.cpp`、`.go`、`.sh`、`.yaml`、`.sql`；
      - 提取扩展名统一采用小写 `file.name.slice(file.name.lastIndexOf('.')).toLowerCase()`；
-  2. 整批拒绝前置校验算法：
-     - 当用户通过按钮、拖拽或粘贴传入一批文件 `incomingFiles: File[]` 时：
-       ① 校验总数量：若 `store.pendingAttachments.length + incomingFiles.length > 3`，立即判定违规，提示文案：“单条消息最多添加 3 个附件。”；
-       ② 校验单个文件格式：遍历 `incomingFiles`，若发现存在任一文件的扩展名不属于上述白名单，立即判定违规，提示文案：“文件 '${file.name}' 格式不受支持。仅支持常见图片、文档、文本与代码文件。”；
-       ③ 校验单个文件大小：遍历 `incomingFiles`，若发现存在任一文件 `file.size > 5 * 1024 * 1024`（5MB），立即判定违规，提示文案：“文件 '${file.name}' 大小超出 5MB 限制。”；
-     - 违规处理：一旦命中上述任一违规，**整批丢弃本次传入的全部文件**（不加入 `pendingAttachments`），输入区已有的待发送附件完好保留；
-  3. 通用深色模态提示弹窗（Alert Modal）：
+  3. 整批拒绝前置校验算法：
+     - 去重后得到有效新增文件集合 `newFiles`；
+     - ① 校验总数量：若 `store.pendingAttachments.length + newFiles.length > 3`，判定违规，提示文案：“单条消息最多添加 3 个附件。”；
+     - ② 校验单个文件格式：遍历 `newFiles`，若发现存在任一文件的扩展名不属于白名单，整批拒绝，提示文案：“文件 '${file.name}' 格式不受支持。仅支持常见图片、文档、文本与代码文件。”；
+     - ③ 校验单个文件大小：遍历 `newFiles`，若存在任一文件 `file.size > 5 * 1024 * 1024`（5MB），整批拒绝，提示文案：“文件 '${file.name}' 大小超出 5MB 限制。”；
+     - 违规处理：一旦命中上述任一违规，**整批丢弃本次传入的全部文件**，输入区已有的待发送附件完好保留；
+  4. 通用深色模态提示弹窗（Alert Modal）：
      - 复用全局深色弹窗体系，在 `index.html` 中提供 `#alert-modal` 骨架；
      - 弹窗展示警告标题“无法添加附件”与对应的违规原因文案；底部提供单个深色高亮“我知道了”按钮；
      - 支持点击按钮、点击背景遮罩或按下键盘 `Escape` 键平滑关闭弹窗。
 
-**B1_13_3 在线附件持久化存储与会话级联清理机制**
+**B1_13_3 在线附件持久化与 Mock 模式缓存目录管理**
 
 - 状态：已完成
-- 需求描述：在线形态下，发送消息时将附件复制存入本地应用专属目录，与原文件解耦；历史会话重开可读取可点击；删除对话时级联删除对应的附件副本；离线形态接收附件遵循相同校验规则，但不写磁盘、不执行工具，仅在对话中反馈收到附件。
+- 需求描述：在线形态下，发送消息时将附件复制存入本地应用专属目录，与原文件解耦；删除对话时级联删除对应的附件副本；Mock 模式下将发送的文件存入专用缓存文件夹中，按照相同模式处理附件查看与系统调起；每次程序启动时自动清空该缓存文件夹。
 - 详细方案设计：
-  1. 存储目录与文件副本落盘规范：
+  1. 在线形态存储目录与持久化：
      - 存储基路径：`data/attachments/{session_id}/`，按会话唯一 ID 隔离划分独立的子文件夹；
-     - 文件命名：采用 `{attachment_id}_{safe_filename}`（生成服务端唯一 `att_u_` 前缀 ID，结合过滤非法路径字符的文件名），防止重名覆盖与路径穿越；
-     - 原文件解耦：在线发送时服务端将上传的文件流完整写入该专属目录；原用户磁盘上的原始文件即便被用户重命名、移动或删除，应用内的附件副本依然不受任何影响；
-  2. 数据表模式与外键级联：
-     - 在 SQLite 中创建 `attachments` 表（字段：`id`, `session_id`, `message_id`, `filename`, `file_type`, `file_size`, `storage_path`, `created_at`）；
-     - 关联 `sessions(id)` 与 `messages(id)` 均配置 `ON DELETE CASCADE` 外键级联；
-  3. 会话删除物理联动：
-     - 当用户删除在线会话时，在执行 `DELETE FROM sessions WHERE id = ?` 触发数据库级联删除记录的同时，后端在文件系统层调用 `shutil.rmtree(config.ATTACHMENT_DIR / session_id, ignore_errors=True)`，彻底物理清理该会话在磁盘上的所有附件副本文件；
-  4. 离线形态行为差异化：
-     - 离线形态下发送带附件消息时，附件数据仅在前端内存封装文件名与数量，随 `POST /api/chat` 传递给后端；`MockAgent` 不在本地磁盘创建任何文件，也不读写 SQLite，保持离线纯内存运行规范。
+     - 文件命名：采用 `{attachment_id}_{safe_filename}`，防止重名覆盖与路径穿越；
+     - 在 SQLite 中创建 `attachments` 表并配置 `ON DELETE CASCADE` 外键级联；删除在线会话时物理清理该会话子目录；
+  2. **Mock 模式临时缓存目录与启动清理规范**：
+     - 缓存基路径：`data/cache/attachments/`（配置常量 `ATTACHMENT_CACHE_DIR`）；
+     - **启动清空缓存**：在 FastAPI 应用启动的 `lifespan` 阶段，自动扫描并清空 `data/cache/attachments/` 目录下的所有临时文件，确保每次程序运行均从干净的缓存环境开始；
+     - **Mock 附件写入与管理**：
+       - 提供附件缓存写入接口（`POST /api/attachments/cache`），支持接收表单文件流，保存至 `data/cache/attachments/{attachment_id}_{safe_filename}`；
+       - 后端内存维护缓存附件元数据记录表 `cache_attachments`（含 `id`, `filename`, `file_type`, `file_size`, `storage_path`, `is_image` 等信息）；
+       - 前端在 Mock 模式下发送带附件消息时，先行将文件上传至缓存目录，并将其关联的真实附件 ID 存入用户消息气泡中；
+  3. 双形态统一打开与预览：
+     - 在 `POST /api/attachments/{attachment_id}/open` 与 `GET /api/attachments/{attachment_id}/preview` 中，后端若在在线 `attachments` 表未查到对应附件，自动回退到缓存附件表查询；
+     - 若命中缓存且物理文件存在，同样异步调起 Windows 系统默认关联程序打开该文件，或提供图片缩略图预览。
 
 **B1_13_4 消息气泡附件呈现与系统默认应用调起**
 
 - 状态：已完成
-- 需求描述：发送后附件在消息气泡中展示（图片显示缩略图，其余展示文件卡片）；点击附件时调用 Windows 系统默认应用打开应用目录里的副本；副本被手动删除后点击提示“文件已不存在”。
+- 需求描述：发送后附件在消息气泡中展示（图片显示缩略图，其余展示文件卡片）；点击附件时调用 Windows 系统默认应用打开应用目录（或 Mock 缓存目录）里的副本；副本被手动删除后点击提示“文件已不存在”。
 - 详细方案设计：
   1. 消息气泡附件列表 DOM 结构与排版（`chat.css` 与 `views/chat.js`）：
      - 每条包含附件的消息卡片中挂载 `.msg__attachments` 容器；
@@ -1242,19 +1258,19 @@ status: Literal["running", "completed", "interrupted", "failed"]
      - 附件卡片具有可点击视觉反馈（指针悬停变为手型并微发光）；
   2. Windows 系统默认应用调起（`Assistant/api/attachments.py`）：
      - 前端点击气泡内的附件卡片时，调用 `POST /api/attachments/{attachment_id}/open`；
-     - 后端查询 `attachments` 表定位到 `storage_path`；
-     - 物理文件检查：若 `storage_path.is_file()` 为 `False`（附件副本此前被用户在本地文件夹中手动删除），后端返回 `404 Not Found`（错误码 `ATTACHMENT_NOT_FOUND`）；
-     - 调起操作系统程序：若文件存在，在 Windows 环境下异步调用 `os.startfile(str(storage_path.resolve()))` 调起系统默认关联程序（如 Word 打开 docx、Excel 打开 xlsx、系统看图软件打开图片、VS Code 打开代码文件），接口返回 `200 OK`；
+     - 后端查询 `attachments` 表或缓存附件表定位到 `storage_path`；
+     - 物理文件检查：若 `storage_path.is_file()` 为 `False`（附件副本此前被用户手动删除或已被清理），后端返回 `404 Not Found`（错误码 `ATTACHMENT_NOT_FOUND`）；
+     - 调起操作系统程序：若文件存在，在 Windows 环境下异步调用 `os.startfile(str(storage_path.resolve()))` 调起系统默认关联程序，接口返回 `200 OK`；
      - 前端反馈：若后端返回 404，前端调用通用深色提示弹窗，向用户明确提示：“文件已不存在”。
 
 ---
 
 ##### B1.14 图片附件的模型视觉能力校验与弹窗拦截
 
-**B1_14_1 发送时模型视觉能力探测与阻断拦截机制**
+**B1_14_1 发送时模型视觉能力探测、多模态 Base64 注入与阻断拦截机制**
 
 - 状态：已完成
-- 需求描述：添加图片时不校验、不弹窗；在点击发送时校验当前配置模型是否支持图片输入；若模型 API 返回不支持，拦截本次发送，弹出提示“当前模型不支持图片输入”，清空本条消息的全部附件（图片与文档），但保留输入框中的文字。
+- 需求描述：添加图片时不校验、不弹窗；在点击发送时校验当前配置模型是否支持图片输入；若模型 API 返回不支持，拦截本次发送，弹出提示“当前模型不支持图片输入”，清空本条消息的全部附件（图片与文档），但保留输入框中的文字；若模型支持视觉，将图片编码为标准多模态 Base64 数据注入请求，确保视觉模型真实接收到图片。
 - 详细方案设计：
   1. 发送时探测触发时序（`Assistant/api/sessions.py` 与 `Assistant/agent/llm_client.py`）：
      - 用户在前端输入区添加图片并点击发送时，前端发起 `POST /api/sessions/{session_id}/messages` 请求；
@@ -1264,10 +1280,27 @@ status: Literal["running", "completed", "interrupted", "failed"]
        - 若无探测记录，向模型服务商发起轻量视觉探测请求（携带 1x1 最小合法图片 content 块向模型端点请求单 token 输出）；
        - 若服务商返回成功，将该模型记录为支持视觉（`True`）并放行；
        - 若服务商返回 `400 Bad Request` 或报错内容指出 `does not support image` / `invalid parameter`，将该模型标记为不支持（`False`）；
-  2. 后端 400 阻断与事务回滚：
+  2. **多模态视觉图片 Base64 注入大模型上下文（`online_agent.py` 与 `react.py`）**：
+     - 在为视觉模型构造用户消息时，若用户消息包含图片附件（`is_image=True`）：
+       - 从附件存储路径（`storage_path`）读取图片二进制字节，转换为 Base64 编码字符串；
+       - 根据扩展名获取图片 MIME 类型（如 `image/png`, `image/jpeg`, `image/webp`）；
+       - 将消息的 `content` 组装为 OpenAI 标准多模态格式：
+         ```json
+         [
+           {"type": "text", "text": "用户消息正文内容"},
+           {
+             "type": "image_url",
+             "image_url": {
+               "url": "data:image/png;base64,..."
+             }
+           }
+         ]
+         ```
+       - 确保真实多模态请求下，配置了视觉模型的后端服务能够将图片内容完整推入大模型 API，模型能够准确看到并理解图片；
+  3. 后端 400 阻断与事务回滚：
      - 探测到不支持图片时，接口立即返回 `400 Bad Request`，返回 JSON 结构体 `{"code": "IMAGE_NOT_SUPPORTED", "message": "当前模型不支持图片输入"}`；
      - 拦截期间不执行数据库写操作，不保存附件到磁盘，杜绝垃圾数据生成；
-  3. 前端拦截状态机与输入保护（`Assistant/web/js/views/chat.js`）：
+  4. 前端拦截状态机与输入保护（`Assistant/web/js/views/chat.js`）：
      - 前端捕获到 `IMAGE_NOT_SUPPORTED` 响应码：
        ① **阻断本次发送**：不将用户消息挂载上屏，不开启 SSE 订阅流；
        ② **模态弹窗警示**：弹出通用深色模态提示弹窗，文案为“当前模型不支持图片输入”；
@@ -1331,21 +1364,23 @@ status: Literal["running", "completed", "interrupted", "failed"]
      - 捕获异常后统一返回标准错误提示：`[读取失败：文件已加密、损坏或编码不受支持]`；
      - Agent 提示词严格约束：当工具返回读取失败时，Agent 必须如实将失败原因告知用户，严禁凭空虚构或猜测文件内容。
 
-**B1_15_3 ReAct 工具调用全链路 SSE 展示与离线 Mock 文字反馈**
+**B1_15_3 ReAct 规划步骤状态全链路广播、明确展示与离线 Mock 反馈**
 
 - 状态：已完成
-- 需求描述：Agent 调用工具时对话界面显示调用过程（如“正在读取附件 xxx”）；离线形态发送带附件消息时不执行工具、不存附件，系统文字反馈收到文件（如“已收到 2 个文件：a.docx、b.py”）。
+- 需求描述：Agent 执行过程中明确展示规划与执行步骤，包括“正在思考”、“正在调用工具: xxx”、“正在生成回复”等状态，不再只隐蔽展示工具；离线形态发送带附件消息时，将附件安全存入临时缓存，Mock 给出文字反馈。
 - 详细方案设计：
-  1. ReAct 循环中工具调用流式事件广播（`Assistant/agent/react.py` 与 `task_manager.py`）：
-     - 在 `ReActLoop` 运行中，模型返回结构化 `tool_calls`（命中 `read_attachment`）：
-       ① 提取 `attachment_id` 并查询对应文件名；
-       ② 向所有活跃订阅队列广播 `tool_start` 事件：`event: tool_start\ndata: {"tool": "read_attachment", "attachment_name": filename, "status_text": "正在读取附件 " + filename + "..."}\n\n`；
-       ③ 调用 `await self.dispatch_action(tool_call)` 执行实际读取并获得结果文本；
-       ④ 广播 `tool_done` 事件：`event: tool_done\ndata: {"tool": "read_attachment", "status": "success"}\n\n`；
-       ⑤ 将提取结果作为 `role: tool` 消息追加至 ReAct 循环历史，再次驱动大模型生成最终回答；
-  2. 前端工具执行过程胶囊组件（`views/chat.js` 与 `chat.css`）：
-     - 前端在 SSE 增量订阅中监听 `tool_start` 事件：在当前 Agent 消息气泡内创建并挂载状态胶囊 `<div class="msg__tool-capsule"><span class="msg__tool-spinner"></span><span class="msg__tool-label">正在读取附件 xxx...</span></div>`；
-     - 收到 `tool_done` 事件后：胶囊状态标记为已完成（隐藏 spinner 或切换为静止小徽标），随后收到的模型流式增量文本无缝渲染在正文区；
-  3. 离线形态 Mock 阶段文字反馈：
-     - 离线形态下，若请求中包含 `pendingAttachments`，`MockAgent` 不调用工具、不读写本地文件；
-     - 后端提取附件数量与文件名列表，组装确定性中文回复：`已收到 ${count} 个文件：${fileNames.join('、')}。当前处于离线模式，不执行附件解析与工具调用。`，通过既有 SSE 直出流向前端推送，直观验证双形态一致的附件收发交互。
+  1. ReAct 循环与规划步骤状态广播（`Assistant/agent/react.py` 与 `task_manager.py`）：
+     - 在 Agent 执行生命周期中，通过 `step_status`（与既有 `tool_start`、`tool_done`）事件向前端全链路推送明确的 Agent 规划步骤：
+       ① **进入思考/规划阶段**：在调用 LLM 决策前，广播 `event: step_status\ndata: {"status": "thinking", "text": "正在思考..."}\n\n`；
+       ② **调用工具阶段**：当 LLM 返回 `tool_calls` 时，广播 `event: step_status\ndata: {"status": "calling_tool", "tool": tool_name, "text": "正在调用工具: " + tool_name + "..."}\n\n`（同时广播 `tool_start` 携带 `attachment_name` 等详细参数）；
+       ③ **工具调用完成**：广播 `tool_done`；
+       ④ **生成最终回复阶段**：当模型决定结束工具调用或无工具调用、开始吐出回复内容时，广播 `event: step_status\ndata: {"status": "generating", "text": "正在生成回复..."}\n\n`；随后以 `delta` 逐块推送正文内容；
+  2. 前端规划步骤状态指示器组件（`views/chat.js` 与 `chat.css`）：
+     - 升级气泡等待指示区为规划步骤指示器 `.agent-step-status`，替代单一三点等待：
+       - 显示当前步骤状态（“正在思考...”、“正在调用工具: xxx...”、“正在生成回复...”）与动态微动图标；
+       - 当收到新的 `step_status` 事件时，平滑更新状态文字与图标；
+       - 当收到首个 `delta` 或正文开始输出后，生成状态平滑过渡，确保最终回复 Markdown 清晰展示；
+       - 生成完成（`done`）后，规划步骤收拢为完成状态；
+  3. 离线形态 Mock 阶段文字与缓存反馈：
+     - 离线形态下，发送消息后前端将附件上传至临时缓存目录 `data/cache/attachments/`；
+     - MockAgent 在 SSE 回复中同样包含规划步骤流转与收到文件的文字反馈，且用户点击气泡中的附件卡片可调起 Windows 系统默认程序正常查看。
