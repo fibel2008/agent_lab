@@ -17,4 +17,5 @@ export const ICONS = Object.freeze({
   CHECK: 'icon-check',
   PAPERCLIP: 'icon-paperclip',
   FILE: 'icon-file',
+  SEARCH: 'icon-search',
 });

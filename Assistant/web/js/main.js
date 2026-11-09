@@ -1,9 +1,10 @@
-// 前端入口：构建侧栏导航并初始化哈希路由与对话主窗口
+// 前端入口：构建侧栏导航并初始化哈希路由、对话主窗口与个人数据库工作台
 
 import { createSvgIcon } from './dom.js';
 import { initRouter } from './router.js';
 import { ROUTES } from './routes.js';
 import { initChatView, onChatViewActivated, onChatViewDeactivated } from './views/chat.js';
+import { initDatabaseView, onDatabaseViewActivated, onDatabaseViewDeactivated } from './views/database.js';
 import { renderPlaceholder } from './views/placeholder.js';
 
 function buildNavList(navListEl) {
@@ -37,18 +38,25 @@ function bootstrap() {
   const navListEl = document.getElementById('nav-list');
   const pageTitleEl = document.getElementById('page-title');
   const viewChatEl = document.getElementById('view-chat');
+  const viewDatabaseEl = document.getElementById('view-database');
   const viewPlaceholderEl = document.getElementById('view-placeholder');
   const appSidebarEl = document.querySelector('.app-sidebar');
+  const dbHeaderTabsEl = document.getElementById('db-header-tabs');
+  const dbHeaderSearchEl = document.getElementById('db-header-search');
 
   buildNavList(navListEl);
   initChatView();
+  initDatabaseView();
 
   initRouter({
     navListEl,
     pageTitleEl,
     viewChatEl,
+    viewDatabaseEl,
     viewPlaceholderEl,
     appSidebarEl,
+    dbHeaderTabsEl,
+    dbHeaderSearchEl,
     onRouteRender(route) {
       if (route.view === 'chat') {
         if (typeof onChatViewActivated === 'function') {
@@ -58,9 +66,20 @@ function bootstrap() {
         if (typeof onChatViewDeactivated === 'function') {
           onChatViewDeactivated();
         }
-        if (route.view === 'placeholder') {
-          renderPlaceholder(viewPlaceholderEl, route);
+      }
+
+      if (route.view === 'database') {
+        if (typeof onDatabaseViewActivated === 'function') {
+          onDatabaseViewActivated();
         }
+      } else {
+        if (typeof onDatabaseViewDeactivated === 'function') {
+          onDatabaseViewDeactivated();
+        }
+      }
+
+      if (route.view === 'placeholder') {
+        renderPlaceholder(viewPlaceholderEl, route);
       }
     },
   });

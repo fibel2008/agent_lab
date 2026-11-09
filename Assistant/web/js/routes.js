@@ -17,9 +17,9 @@ export const ROUTES = Object.freeze([
     hash: '#/database',
     label: '个人数据库',
     title: '个人数据库',
-    view: 'placeholder',
+    view: 'database',
     icon: ICONS.DATABASE,
-    description: '后续版本将在这里管理学习资料、笔记与知识库。',
+    description: '管理个人学习资料、切片与在线对话归档。',
   }),
   Object.freeze({
     hash: '#/mail',

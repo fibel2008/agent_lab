@@ -10,12 +10,12 @@
 
 ## 1. 项目快照
 
-- **当前版本**：第二版（B1.0 在线对话：B1.1–B1.15 全部完成并已归档至 Archive/vB_0_intent.md, Archive/vB_0_spec.md）
-- **已完成范围**：A1.1–A1.9、A2.1–A2.7、A2.9、A3.2–A3.3、A4.1、A6.1–A6.11、B1.1–B1.15（A2.8、A3.1 已废弃）
-- **进行中**：第二版已验收归档完毕，准备进入第三版（C1.0 个人数据库工作台）
-- **下一个**：开启第三版 C1.0 个人数据库工作台（分支名待 Spec 规划）
+- **当前版本**：第三版（C1.0 个人数据库工作台前端页面：C1.1–C1.3 已完成；B1.0 全部项已归档至 Archive/vB_0_intent.md, Archive/vB_0_spec.md）
+- **已完成范围**：A1.1–A1.9、A2.1–A2.7、A2.9、A3.2–A3.3、A4.1、A6.1–A6.11、B1.1–B1.15、C1.1–C1.3（A2.8、A3.1 已废弃）
+- **进行中**：完成 C1.0 前端工作台合入主分支，准备进入 C2.0（双层存储与资料底座）
+- **下一个**：启动第三版 C2.0 本地可读文件与数据库双层存储实现
 - **当前分支**：`main`
-- **最近一次合并的分支**：`feature/attachments-and-tools`
+- **最近一次合并的分支**：`start_c1_development`
 - **指针**：各版本的设计与理由见 Spec.md 对应章节，历史详细规格见 Archive/ 归档文档。
 
 
@@ -30,6 +30,7 @@
 | `feature/generation-decoupling` | B1.8、B1.1（生成中切换中断） | 已验收 | 是            |
 | `feature/chat-ux-enhancements`  | B1.10–B1.12                          | 已验收 | 是            |
 | `feature/attachments-and-tools` | B1.13–B1.15                          | 已验收 | 是            |
+| `start_c1_development`          | C1.1–C1.3                            | 已验收 | 是            |
 
 
 ## 2. 工作约定（W）
@@ -141,5 +142,15 @@ T4 后端必须使用 FastAPI + Uvicorn，对话回复必须采用后端 SSE 真
   - 现象：配置视觉模型时直接发送字符串导致模型收不到图片；离线 Mock 发送后点击附件报 404 文件已不存在。
   - 原因：大模型多模态协议需将图片转 Base64 包装为 `image_url` 字典数组；离线模式原本未落盘导致打开接口找不到副本。
   - 解法：多模态请求统一在 `online_agent` / `react` 中读取物理图片并转 Base64 注入；离线模式统一存入 `data/cache/attachments` 缓存目录并在程序启动时清空。
+
+- **Git Worktree 独立工作树缺少 .venv 导致 start.bat 启动失败**
+  - 现象：在新的 git worktree 目录下双击 `start.bat` 闪退或报错找不到 Python 解释器。
+  - 原因：`.venv` 是本地未追踪的依赖目录，只存在于主项目物理路径（`D:\desk\jyy\Lab1`）下，worktree 检出时不会自动携带该目录。
+  - 解法：在 worktree 环境下需直接指定主目录的虚拟环境（`D:\desk\jyy\Lab1\.venv\Scripts\python.exe -m Assistant`）启动，或者将分支合回主目录后双击主目录下的 `start.bat`。
+
+- **CDP 端到端测试 evaluate 多次执行导致 SyntaxError 变量重复声明**
+  - 现象：Node.js CDP 脚本连续执行多个 evaluate 步骤时报 `Identifier 'x' has already been declared`。
+  - 原因：CDP 在同一个 Execution Context 顶层上下文中执行 `const` / `let` 会进入全局作用域并保留声明。
+  - 解法：测试用例里的每个 evaluate 表达式必须使用独立块级花括号 `{ const el = ...; ... }` 包裹隔离作用域。
 
  

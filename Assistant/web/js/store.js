@@ -458,3 +458,462 @@ export function clearPendingAttachments() {
   state.pendingAttachments = [];
   return state.pendingAttachments;
 }
+
+// ==========================================
+// 个人数据库工作台状态管理 (C1.0)
+// ==========================================
+
+let nextDocId = 3;
+let nextChunkId = 30;
+
+export function splitTextToParagraphs(text) {
+  if (!text || typeof text !== 'string') {
+    return [];
+  }
+  return text
+    .split(/\r?\n\s*\r?\n/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+}
+
+const initialDocs = [
+  {
+    id: 'd1',
+    name: 'Python 入门笔记.pdf',
+    time: '昨天导入',
+    text: 'Python 是一种解释型、高级编程语言，其设计哲学强调代码的可读性。\n\nPython 支持多种编程范式，包括结构化、面向对象和函数式编程。\n\n在构建 Agent 系统时，Python 拥有最完善的生态与异步框架支持。',
+  },
+  {
+    id: 'd2',
+    name: 'agent_notes.docx',
+    time: '3 天前导入',
+    text: 'Agent 的核心在于感知、思考与行动的闭环。\n\nReAct 架构通过交替生成思考步骤与操作指令，使大模型能够使用外部工具解决复杂问题。',
+  },
+];
+
+const initialChunks = [
+  {
+    id: 'c11',
+    docId: 'd1',
+    paraIndex: 0,
+    text: 'Python 是一种解释型、高级编程语言，其设计哲学强调代码的可读性。',
+  },
+  {
+    id: 'c12',
+    docId: 'd1',
+    paraIndex: 1,
+    text: 'Python 支持多种编程范式，包括结构化、面向对象和函数式编程。',
+  },
+  {
+    id: 'c13',
+    docId: 'd1',
+    paraIndex: 2,
+    text: '在构建 Agent 系统时，Python 拥有最完善的生态与异步框架支持。',
+  },
+  {
+    id: 'c21',
+    docId: 'd2',
+    paraIndex: 0,
+    text: 'Agent 的核心在于感知、思考与行动的闭环。',
+  },
+  {
+    id: 'c22',
+    docId: 'd2',
+    paraIndex: 1,
+    text: 'ReAct 架构通过交替生成思考步骤与操作指令，使大模型能够使用外部工具解决复杂问题。',
+  },
+];
+
+const initialArchivedSessions = [
+  {
+    id: 's_arch_1',
+    title: '关于 Agent 循环机制的探讨',
+    msgs: [
+      {
+        id: 'm1',
+        role: 'user',
+        text: '请解释一下 ReAct 循环是如何在单轮会话中逐步调用工具并返回结果的？',
+        time: '11-06 14:20',
+      },
+      {
+        id: 'm2',
+        role: 'assistant',
+        text: 'ReAct 将推理（Reasoning）与行动（Acting）结合。模型在收到问题后先输出 Thought 思考要执行什么工具，再生成 Action 与参数，由执行环境返回 Observation 后继续下一轮循环，直至得出最终答案。',
+        time: '11-06 14:21',
+      },
+    ],
+  },
+  {
+    id: 's_arch_2',
+    title: 'Python 异步持久化方案咨询',
+    msgs: [
+      {
+        id: 'm3',
+        role: 'user',
+        text: '为什么在单机桌面 Agent 中推荐 aiosqlite 单长连接配合写锁，而不是每次请求开连接池？',
+        time: '11-07 10:15',
+      },
+      {
+        id: 'm4',
+        role: 'assistant',
+        text: '因为 SQLite 本质是文件级单写多读引擎。aiosqlite 底层每个连接由一个独立工作线程驱动，多连接高并发写容易导致 database is locked 报错；应用级复用单一连接并配合 asyncio.Lock 串行化事务写操作最为稳健且容易维护。',
+        time: '11-07 10:16',
+      },
+    ],
+  },
+];
+
+const dbState = {
+  activeView: 'chunks', // 'docs' | 'chunks' | 'chats'
+  selectedIds: {
+    docs: 'd1',
+    chunks: 'c11',
+    chats: 'm1',
+  },
+  filterDocId: null,
+  searchQuery: '',
+  foldedSessions: {},
+  draftText: null,
+  isSidebarCollapsed: false,
+  docs: initialDocs,
+  chunks: initialChunks,
+  archivedSessions: initialArchivedSessions,
+};
+
+export function getDbState() {
+  return dbState;
+}
+
+export function setDbActiveView(view) {
+  if (view !== 'docs' && view !== 'chunks' && view !== 'chats') {
+    return;
+  }
+  dbState.activeView = view;
+  dbState.draftText = null;
+}
+
+export function getDbActiveView() {
+  return dbState.activeView;
+}
+
+export function getDbSelectedId(view) {
+  const v = view || dbState.activeView;
+  return dbState.selectedIds[v] || null;
+}
+
+export function setDbSelectedId(view, id) {
+  if (dbState.selectedIds[view] !== undefined) {
+    dbState.selectedIds[view] = id;
+    dbState.draftText = null;
+  }
+}
+
+export function getDbFilterDocId() {
+  return dbState.filterDocId;
+}
+
+export function setDbFilterDocId(docId) {
+  dbState.filterDocId = docId;
+}
+
+export function toggleDbSessionFold(sessionId) {
+  dbState.foldedSessions[sessionId] = !dbState.foldedSessions[sessionId];
+  return dbState.foldedSessions[sessionId];
+}
+
+export function isDbSessionFolded(sessionId) {
+  return Boolean(dbState.foldedSessions[sessionId]);
+}
+
+export function isDbSidebarCollapsed() {
+  return dbState.isSidebarCollapsed;
+}
+
+export function setDbSidebarCollapsed(collapsed) {
+  dbState.isSidebarCollapsed = Boolean(collapsed);
+}
+
+export function getDbDraftText() {
+  return dbState.draftText;
+}
+
+export function setDbDraftText(text) {
+  dbState.draftText = text;
+}
+
+export function findDoc(docId) {
+  if (!docId) return null;
+  return dbState.docs.find((d) => d.id === docId) || null;
+}
+
+export function findChunk(chunkId) {
+  if (!chunkId) return null;
+  return dbState.chunks.find((c) => c.id === chunkId) || null;
+}
+
+export function getDocChunks(docId) {
+  if (!docId) return [];
+  return dbState.chunks.filter((c) => c.docId === docId);
+}
+
+export function findMessageWithSession(msgId) {
+  if (!msgId) return null;
+  for (const session of dbState.archivedSessions) {
+    const msg = session.msgs.find((m) => m.id === msgId);
+    if (msg) {
+      return { msg, session };
+    }
+  }
+  return null;
+}
+
+export function getCurrentDbItem() {
+  const view = dbState.activeView;
+  const selectedId = dbState.selectedIds[view];
+  if (!selectedId) return null;
+
+  if (view === 'docs') {
+    return findDoc(selectedId);
+  }
+  if (view === 'chunks') {
+    return findChunk(selectedId);
+  }
+  if (view === 'chats') {
+    const found = findMessageWithSession(selectedId);
+    return found ? found.msg : null;
+  }
+  return null;
+}
+
+export function isDbDirty() {
+  if (dbState.draftText === null) {
+    return false;
+  }
+  const currentItem = getCurrentDbItem();
+  if (!currentItem) {
+    return false;
+  }
+  return dbState.draftText !== currentItem.text;
+}
+
+export function importDbDoc(name, text, timeStr = '刚刚导入') {
+  const id = `d${nextDocId++}`;
+  const doc = {
+    id,
+    name,
+    time: timeStr,
+    text: text || '',
+  };
+
+  dbState.docs.unshift(doc);
+
+  // 切分段落写入 chunks
+  const paragraphs = splitTextToParagraphs(doc.text);
+  paragraphs.forEach((p, idx) => {
+    dbState.chunks.push({
+      id: `c${nextChunkId++}`,
+      docId: doc.id,
+      paraIndex: idx,
+      text: p,
+    });
+  });
+
+  dbState.activeView = 'docs';
+  dbState.selectedIds.docs = doc.id;
+  dbState.draftText = null;
+
+  return { doc, chunkCount: paragraphs.length };
+}
+
+export function saveCurrentDbItem(customText) {
+  const textToSave = customText !== undefined ? customText : dbState.draftText;
+  if (textToSave === null || textToSave === undefined) {
+    return false;
+  }
+
+  const view = dbState.activeView;
+  const selectedId = dbState.selectedIds[view];
+
+  if (view === 'docs') {
+    const doc = findDoc(selectedId);
+    if (!doc) return false;
+    doc.text = textToSave;
+
+    // 正向重切分并同步 chunks
+    const newParas = splitTextToParagraphs(doc.text);
+    const existingChunks = getDocChunks(doc.id);
+
+    // 移除原有该资料的切片
+    dbState.chunks = dbState.chunks.filter((c) => c.docId !== doc.id);
+
+    // 重新生成切片，优先复用已有 id
+    newParas.forEach((p, idx) => {
+      const reusedId = existingChunks[idx]?.id || `c${nextChunkId++}`;
+      dbState.chunks.push({
+        id: reusedId,
+        docId: doc.id,
+        paraIndex: idx,
+        text: p,
+      });
+    });
+
+    dbState.draftText = null;
+    return true;
+  }
+
+  if (view === 'chunks') {
+    const chunk = findChunk(selectedId);
+    if (!chunk) return false;
+    const cleanText = textToSave.trim();
+    chunk.text = cleanText;
+
+    // 反向联动回写原资料
+    const doc = findDoc(chunk.docId);
+    if (doc) {
+      const paras = splitTextToParagraphs(doc.text);
+      if (chunk.paraIndex >= 0 && chunk.paraIndex < paras.length) {
+        paras[chunk.paraIndex] = cleanText;
+      } else {
+        paras.push(cleanText);
+      }
+      doc.text = paras.join('\n\n');
+
+      // 若修改后的切片包含多个段落，重新排布切片索引
+      const reParas = splitTextToParagraphs(doc.text);
+      const docChunks = getDocChunks(doc.id);
+      dbState.chunks = dbState.chunks.filter((c) => c.docId !== doc.id);
+      reParas.forEach((p, idx) => {
+        const cId = docChunks[idx]?.id || (idx === chunk.paraIndex ? chunk.id : `c${nextChunkId++}`);
+        dbState.chunks.push({
+          id: cId,
+          docId: doc.id,
+          paraIndex: idx,
+          text: p,
+        });
+      });
+    }
+
+    dbState.draftText = null;
+    return true;
+  }
+
+  if (view === 'chats') {
+    const found = findMessageWithSession(selectedId);
+    if (!found) return false;
+    found.msg.text = textToSave;
+    dbState.draftText = null;
+    return true;
+  }
+
+  return false;
+}
+
+export function deleteDbDoc(docId) {
+  const docIndex = dbState.docs.findIndex((d) => d.id === docId);
+  if (docIndex === -1) return false;
+
+  dbState.docs.splice(docIndex, 1);
+  // 级联删除切片
+  dbState.chunks = dbState.chunks.filter((c) => c.docId !== docId);
+
+  if (dbState.filterDocId === docId) {
+    dbState.filterDocId = null;
+  }
+
+  // 调整选中项
+  if (dbState.selectedIds.docs === docId) {
+    if (dbState.docs.length > 0) {
+      const nextIdx = Math.min(docIndex, dbState.docs.length - 1);
+      dbState.selectedIds.docs = dbState.docs[nextIdx].id;
+    } else {
+      dbState.selectedIds.docs = null;
+    }
+  }
+
+  dbState.draftText = null;
+  return true;
+}
+
+export function deleteDbChunk(chunkId) {
+  const chunkIndex = dbState.chunks.findIndex((c) => c.id === chunkId);
+  if (chunkIndex === -1) return false;
+
+  dbState.chunks.splice(chunkIndex, 1);
+
+  if (dbState.selectedIds.chunks === chunkId) {
+    const remaining = dbState.filterDocId
+      ? dbState.chunks.filter((c) => c.docId === dbState.filterDocId)
+      : dbState.chunks;
+    if (remaining.length > 0) {
+      const nextIdx = Math.min(chunkIndex, remaining.length - 1);
+      dbState.selectedIds.chunks = remaining[nextIdx].id;
+    } else {
+      dbState.selectedIds.chunks = null;
+    }
+  }
+
+  dbState.draftText = null;
+  return true;
+}
+
+export function deleteDbChatMessage(msgId) {
+  const found = findMessageWithSession(msgId);
+  if (!found) return false;
+
+  const { msg, session } = found;
+  const msgIdx = session.msgs.findIndex((m) => m.id === msgId);
+  if (msgIdx !== -1) {
+    session.msgs.splice(msgIdx, 1);
+  }
+
+  // 空会话自动清理
+  dbState.archivedSessions = dbState.archivedSessions.filter((s) => s.msgs.length > 0);
+
+  // 调整选中项
+  if (dbState.selectedIds.chats === msgId) {
+    const allMsgs = [];
+    dbState.archivedSessions.forEach((s) => allMsgs.push(...s.msgs));
+    if (allMsgs.length > 0) {
+      const nextIdx = Math.min(msgIdx, allMsgs.length - 1);
+      dbState.selectedIds.chats = allMsgs[nextIdx].id;
+    } else {
+      dbState.selectedIds.chats = null;
+    }
+  }
+
+  dbState.draftText = null;
+  return true;
+}
+
+export function searchDb(rawQuery) {
+  const query = (rawQuery || '').trim().toLowerCase();
+  if (!query) {
+    return { docs: [], chunks: [], chats: [] };
+  }
+
+  const matchedDocs = dbState.docs.filter((d) =>
+    d.name.toLowerCase().includes(query) || d.text.toLowerCase().includes(query)
+  );
+
+  const matchedChunks = dbState.chunks.filter((c) =>
+    c.text.toLowerCase().includes(query)
+  );
+
+  const matchedChats = [];
+  dbState.archivedSessions.forEach((session) => {
+    session.msgs.forEach((msg) => {
+      if (msg.text.toLowerCase().includes(query)) {
+        matchedChats.push({
+          msg,
+          session,
+        });
+      }
+    });
+  });
+
+  return {
+    docs: matchedDocs,
+    chunks: matchedChunks,
+    chats: matchedChats,
+  };
+}
