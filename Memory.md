@@ -37,18 +37,21 @@
 
 W1 提交信息必须使用 Conventional Commits 格式。理由：统一提交历史语义，便于回看功能演进与变更目的。范围：仓库内所有 Git 提交。
 
-W2 分支合并回 `main` 时必须使用 `--no-ff`
-并保留原功能分支，禁止删除已合并分支。理由：保留完整的分支合并拓扑轨迹，便于按阶段回溯功能演进节奏。范围：所有合入 `main` 的功能分支合并操作。
+W2 分支合并回 `main` 时必须使用
+`--no-ff`并保留原功能分支，禁止删除已合并分支。理由：保留完整的分支合并拓扑轨迹，便于按阶段回溯功能演进节奏。范围：所有合入 `main` 的功能分支合并操作。
 
-W3 每次提交后必须立即推送当前分支至远端 `origin`，合并回 `main` 后必须立即推送
-`main`。理由：保持本地与远端实时同步，形成异地备份并保留完整提交轨迹。范围：所有本地分支提交与 `main` 分支合并操作。
+W3 每次提交后必须立即推送当前分支至远端 `origin`，合并回 `main`
+后必须立即推送`main`。理由：保持本地与远端实时同步，形成异地备份并保留完整提交轨迹。范围：所有本地分支提交与 `main` 分支合并操作。
 
-W4 编写任何业务代码前必须先建立并维护
-`.gitignore`。理由：防止虚拟环境、缓存、依赖目录与本地运行数据进入版本库。范围：项目初始化及新增产生本地临时文件、数据目录或构建产物的所有阶段。
+W4
+编写任何业务代码前必须先建立并维护`.gitignore`。理由：防止虚拟环境、缓存、依赖目录与本地运行数据进入版本库。范围：项目初始化及新增产生本地临时文件、数据目录或构建产物的所有阶段。
 
 W5 需求编号（Intent）与实现规格编号（Spec）一经分配禁止更改或复用；条目废弃时必须保留原编号并标注"已废弃"。理由：保证每条需求到实现子项的双向追踪链路稳定，清晰反映需求的增删演进轨迹。范围：Intent.md 与 Spec.md 中的所有板块、需求及实现子项编号。
 
 W6 必须遵循规范先行：新增需求或实现偏离 Spec 时，必须先更新 Spec.md，再编写或修改代码。理由：确保每次编码都有明确、可验证的实现依据，杜绝代码与设计文档脱节。范围：所有功能开发、架构调整与需求变更流程。
+
+W7 代码完成后进入验证环节时，必须遵循"最小验证、及时停止"：A. 仅做一次最基本的验证（程序能运行、无报错即可），禁止编写额外的测试文件或测试数据；基本验证通过即停止验证，若未通过最多修复 3 轮，仍未通过则停止并汇报失败原因 B. 禁止反复修复非报错类的小问题（如命名、风格、可优化项）。 C. 验证通过后，先编写相关文档并提交 git，随后立即停止，并向我汇报三项内容：改了什么、达成了什么、我应如何具体验证。理由：控制验证耗时，避免 agent 过度验证和空转，把深度验证的主导权交还给使用者。范围：所有功能开发、架构调整与需求变更完成后的验证、文档与交付环节。  
+
 
 ## 3. 技术约定（T）
 
@@ -56,12 +59,12 @@ T1 前端必须使用原生 HTML、CSS、JavaScript（ES Modules），禁止引�
 
 T2 前端所有颜色必须集中定义为 CSS 变量并通过变量引用，禁止在组件样式中散落写死颜色值。理由：保证全站深色工作台配色一致，并为后续扩展浅色主题预留集中替换点。范围：`Assistant/web/css/` 下的所有样式文件及动态创建的 DOM 样式。
 
-T3 渲染任何文本（含 Markdown、会话标题、模型输出、用户输入）严禁使用 `innerHTML`，必须使用 `textContent` 或纯 DOM 节点构建。理由：彻底杜绝 XSS
-注入风险，确保任何恶意 HTML
-或脚本均只作为纯文本安全显示。范围：前端所有渲染模型输出、会话标题与用户输入内容的位置。
+T3 渲染任何文本（含 Markdown、会话标题、模型输出、用户输入）严禁使用 `innerHTML`，必须使用 `textContent` 或纯 DOM 节点构建。理由：彻底杜绝
+XSS注入风险，确保任何恶意
+HTML或脚本均只作为纯文本安全显示。范围：前端所有渲染模型输出、会话标题与用户输入内容的位置。
 
-T4 后端必须使用 FastAPI + Uvicorn，对话回复必须采用后端 SSE 真流式推送；替换底层模型或切换离线/在线实现时只允许修改 `agent/` 层，禁止改动 API 协议与前端渲染逻辑。理由：统一单进程 ASGI
-异步流式架构并隔离模型实现细节，确保前后端接口协议跨版本稳定。范围：后端服务框架、流式对话接口及 `Assistant/agent/` 智能体执行层。
+T4 后端必须使用 FastAPI + Uvicorn，对话回复必须采用后端 SSE 真流式推送；替换底层模型或切换离线/在线实现时只允许修改 `agent/` 层，禁止改动 API 协议与前端渲染逻辑。理由：统一单进程
+ASGI异步流式架构并隔离模型实现细节，确保前后端接口协议跨版本稳定。范围：后端服务框架、流式对话接口及 `Assistant/agent/` 智能体执行层。
 
 ## 4. 踩坑库
 
@@ -72,24 +75,28 @@ T4 后端必须使用 FastAPI + Uvicorn，对话回复必须采用后端 SSE 真
 - 原因：本机安装的 Python 3.12.13 在 Windows Python Launcher 中的注册名为 `Astral\CPython3.12.13`，而非默认标准标签。
 - 解法：固定使用 Python 3.12 建立独立虚拟环境，创建命令必须指定完整注册名：`py -V:Astral\CPython3.12.13 -m venv .venv`。
 -
+
 **空目录无法被 Git 跟踪**
 
 - 现象：新建的空目录（如初始化时的 `Assistant/`）在 `git status` 中不显示，无法随提交入库。
 - 原因：Git 只跟踪文件，不跟踪空目录本身。
 - 解法：在空目录中放入首个业务文件（如 `__init__.py`）或 `.gitkeep` 占位文件后再提交。
 -
+
 **不引入 httpx 时的接口冒烟验证**
 
 - 现象：在未安装 `httpx` 的阶段，无法使用 Starlette/FastAPI 的 `TestClient` 进行接口测试。
 - 原因：`TestClient` 底层强依赖 `httpx` 库。
 - 解法：在不额外引入测试依赖的阶段，通过启动后端服务子进程，配合 Python 标准库 `urllib.request` 发起真实 HTTP 请求完成接口与静态资源冒烟验证。
 -
+
 **Windows 注册表导致 `.js` 静态模块被浏览器拒绝执行**
 
 - 现象：浏览器加载前端入口 `main.js` 时报 ES Modules MIME 校验错误并拒绝执行；仅加 `Cache-Control: no-cache` 后刷新仍命中 `304 Not Modified` 沿用错误 MIME 头。
 - 原因：Windows 注册表默认将 `.js` 的 Content-Type 设为 `text/plain`，Python `mimetypes` 读取注册表后导致 `StaticFiles` 返回 `text/plain`。
 - 解法：在 `app.py` 启动时显式调用 `mimetypes.add_type("text/javascript", ".js")`，并在静态资源中间件中剥离条件请求头、设置 `Cache-Control: no-store, no-cache, must-revalidate` 强制返回 `200 OK`。
 -
+
 **FastAPI 0.115+ 与 Starlette 的 UploadFile 类型判定失效**
 
 - 现象：在 `request.form()` 解析多附件上传时，使用 `isinstance(item, fastapi.UploadFile)` 判定结果恒为 `False`，导致上传文件被全部过滤丢失。
@@ -103,24 +110,28 @@ T4 后端必须使用 FastAPI + Uvicorn，对话回复必须采用后端 SSE 真
 - 原因：滚动容器同时设置了 `flex-direction: column`、`justify-content: flex-end` 和 `min-height: 100%`，导致溢出内容进入负向滚动区。
 - 解法：移除 `justify-content: flex-end`，改用全宽自然流式块级滚动容器，配合 `calc((100% - 860px) / 2)` 水平居中边距，并在无消息空状态时隐藏空列表容器。
 -
+
 **onMeta 先改消息 ID 导致流式增量无法实时上屏**
 
 - 现象：多会话流式响应时，消息卡片一直停留在三点等待动画，流式文字不实时显示，只有切走再切回重绘时才一次性出现。
 - 原因：`onMeta` 回调中先更新了内存里的 `agentMessage.id` 为服务端返回的 `message_id`，而 DOM 树上节点的 `data-message-id` 仍是客户端初始占位 ID，导致后续 `onDelta` 按新 ID 查找 DOM 节点返回 `null`。
 - 解法：在 `onMeta` 中先基于旧的初始占位 ID（`prevId`）定位 DOM 节点并同步更新其 `data-message-id` 属性；在 `onDelta` 中同时兼容新旧 ID 查找。
 -
+
 **document.createElement('svg') 导致图标透明隐形**
 
 - 现象：动态创建的会话重命名铅笔图标与删除垃圾桶图标在页面上完全透明不显示，但占据布局空间。
 - 原因：使用 `document.createElement('svg')` 创建的是 `HTMLUnknownElement` 而非 `SVGElement`，浏览器不解析 SVG 命名空间及内部 `<use>` 引用。
 - 解法：在 `dom.js` 的节点创建工具中识别 SVG 标签集（`svg`、`use`、`path` 等），强制使用 `document.createElementNS("http://www.w3.org/2000/svg", tagName)`（或统一调用 `createSvgIcon`）。
 -
+
 **标题按 UTF-16 码元截取导致 Emoji 截断乱码**
 
 - 现象：首条消息前 10 个字包含 Emoji 等辅助平面字符时，直接使用 `str.slice(0, 10)` 会生成残缺代理对乱码（\`\`）。
 - 原因：JavaScript 的 `String.prototype.slice` 按 UTF-16 码元切分，一个 Emoji 占 2 个码元，在边界处会被劈成两半。
 - 解法：截取会话标题时必须按 Unicode 码点切分，统一使用 `Array.from(trimmed.replace(/\s+/g, ' ')).slice(0, 10).join('')`。
 -
+
 **弹性侧栏子容器固定像素宽度导致窄屏右侧无声截断**
 
 - 现象：窗口进入窄屏断点（< 768px）侧栏缩窄为 180px 时，新建对话按钮右边框、底部收起按钮及会话条目右侧的重命名/删除按钮被完全裁剪进不可见死区。
@@ -134,23 +145,26 @@ T4 后端必须使用 FastAPI + Uvicorn，对话回复必须采用后端 SSE 真
 - 原因：未隔离用户目录时 Edge 会加载宿主环境的全部扩展插件；且 `<script type="module">` 异步加载，DOM 渲染完成早于业务逻辑初始化完成。
 - 解法：启动 Headless Edge 时必须显式传入 `--user-data-dir=<临时目录>` 与 `--disable-extensions`，并在 `main.js` 初始化末尾设置 `window.__emibot_ready = true`，测试脚本必须显式等待该标记为真后再执行交互断言。
 - **Windows 下异步测试结束后后台生成任务持有文件锁导致 WinError 32**
-  - 现象：异步单元测试断言通过后，在 `tearDown` 清理临时 SQLite 数据库与附件目录时抛出 `PermissionError: [WinError 32] 另一个程序正在使用此文件`。
-  - 原因：被测接口触发的 `TaskManager` 后台异步生成协程在测试函数返回时仍未结束，继续持有 SQLite 连接或临时文件句柄。
-  - 解法：在异步测试基类的 `asyncTearDown` 中，清理临时目录前必须统一先执行 `await task_manager.shutdown()`，确保所有后台任务取消并释放文件句柄。
+- 现象：异步单元测试断言通过后，在 `tearDown` 清理临时 SQLite 数据库与附件目录时抛出 `PermissionError: [WinError 32] 另一个程序正在使用此文件`。
+- 原因：被测接口触发的 `TaskManager` 后台异步生成协程在测试函数返回时仍未结束，继续持有 SQLite 连接或临时文件句柄。
+- 解法：在异步测试基类的 `asyncTearDown` 中，清理临时目录前必须统一先执行 `await task_manager.shutdown()`，确保所有后台任务取消并释放文件句柄。
+-
+**视觉多模态图片构造与离线缓存隔离**
 
-- **视觉多模态图片构造与离线缓存隔离**
-  - 现象：配置视觉模型时直接发送字符串导致模型收不到图片；离线 Mock 发送后点击附件报 404 文件已不存在。
-  - 原因：大模型多模态协议需将图片转 Base64 包装为 `image_url` 字典数组；离线模式原本未落盘导致打开接口找不到副本。
-  - 解法：多模态请求统一在 `online_agent` / `react` 中读取物理图片并转 Base64 注入；离线模式统一存入 `data/cache/attachments` 缓存目录并在程序启动时清空。
+- 现象：配置视觉模型时直接发送字符串导致模型收不到图片；离线 Mock 发送后点击附件报 404 文件已不存在。
+- 原因：大模型多模态协议需将图片转 Base64 包装为 `image_url` 字典数组；离线模式原本未落盘导致打开接口找不到副本。
+- 解法：多模态请求统一在 `online_agent` / `react` 中读取物理图片并转 Base64 注入；离线模式统一存入 `data/cache/attachments` 缓存目录并在程序启动时清空。
+-
+**Git Worktree 独立工作树缺少 .venv 导致 start.bat 启动失败**
 
-- **Git Worktree 独立工作树缺少 .venv 导致 start.bat 启动失败**
-  - 现象：在新的 git worktree 目录下双击 `start.bat` 闪退或报错找不到 Python 解释器。
-  - 原因：`.venv` 是本地未追踪的依赖目录，只存在于主项目物理路径（`D:\desk\jyy\Lab1`）下，worktree 检出时不会自动携带该目录。
-  - 解法：在 worktree 环境下需直接指定主目录的虚拟环境（`D:\desk\jyy\Lab1\.venv\Scripts\python.exe -m Assistant`）启动，或者将分支合回主目录后双击主目录下的 `start.bat`。
+- 现象：在新的 git worktree 目录下双击 `start.bat` 闪退或报错找不到 Python 解释器。
+- 原因：`.venv` 是本地未追踪的依赖目录，只存在于主项目物理路径（`D:\desk\jyy\Lab1`）下，worktree 检出时不会自动携带该目录。
+- 解法：在 worktree 环境下需直接指定主目录的虚拟环境（`D:\desk\jyy\Lab1\.venv\Scripts\python.exe -m Assistant`）启动，或者将分支合回主目录后双击主目录下的 `start.bat`。
+-
+**CDP 端到端测试 evaluate 多次执行导致 SyntaxError 变量重复声明**
 
-- **CDP 端到端测试 evaluate 多次执行导致 SyntaxError 变量重复声明**
-  - 现象：Node.js CDP 脚本连续执行多个 evaluate 步骤时报 `Identifier 'x' has already been declared`。
-  - 原因：CDP 在同一个 Execution Context 顶层上下文中执行 `const` / `let` 会进入全局作用域并保留声明。
-  - 解法：测试用例里的每个 evaluate 表达式必须使用独立块级花括号 `{ const el = ...; ... }` 包裹隔离作用域。
+- 现象：Node.js CDP 脚本连续执行多个 evaluate 步骤时报 `Identifier 'x' has already been declared`。
+- 原因：CDP 在同一个 Execution Context 顶层上下文中执行 `const` / `let` 会进入全局作用域并保留声明。
+- 解法：测试用例里的每个 evaluate 表达式必须使用独立块级花括号 `{ const el = ...; ... }` 包裹隔离作用域。
 
  
